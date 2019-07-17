@@ -17,6 +17,8 @@ package com.google.devtools.build.lib.rules.proto;
 import com.google.common.collect.ImmutableList;
 import com.google.devtools.build.lib.actions.Artifact;
 import com.google.devtools.build.lib.collect.nestedset.NestedSet;
+import com.google.devtools.build.lib.collect.nestedset.NestedSetBuilder;
+import com.google.devtools.build.lib.collect.nestedset.Order;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.Immutable;
 import com.google.devtools.build.lib.events.Location;
 import com.google.devtools.build.lib.packages.BuiltinProvider;
@@ -24,6 +26,9 @@ import com.google.devtools.build.lib.packages.NativeInfo;
 import com.google.devtools.build.lib.skyframe.serialization.autocodec.AutoCodec;
 import com.google.devtools.build.lib.skylarkbuildapi.ProtoInfoApi;
 import com.google.devtools.build.lib.skylarkbuildapi.proto.ProtoBootstrap;
+import com.google.devtools.build.lib.syntax.EvalException;
+import com.google.devtools.build.lib.syntax.SkylarkList;
+import com.google.devtools.build.lib.syntax.SkylarkNestedSet;
 import com.google.devtools.build.lib.util.Pair;
 import javax.annotation.Nullable;
 
@@ -35,9 +40,35 @@ import javax.annotation.Nullable;
 @AutoCodec
 public final class ProtoInfo extends NativeInfo implements ProtoInfoApi<Artifact> {
   /** Provider class for {@link ProtoInfo} objects. */
-  public static class Provider extends BuiltinProvider<ProtoInfo> implements ProtoInfoApi.Provider {
+  public static class Provider extends BuiltinProvider<ProtoInfo> implements ProtoInfoApi.Provider<Artifact> {
     public Provider() {
       super(ProtoBootstrap.PROTO_INFO_STARLARK_NAME, ProtoInfo.class);
+    }
+
+    @Override
+    public ProtoInfoApi<?> constructor(
+        SkylarkNestedSet transitiveImports,
+        SkylarkNestedSet transitiveSources,
+        SkylarkList directSources,
+        SkylarkNestedSet checkDepsSources,
+        Artifact directDescriptorSet,
+        Location loc)
+        throws EvalException {
+      return new ProtoInfo(
+          ImmutableList.of(),
+          ImmutableList.of(),
+          "directProtoSourceRoot",
+          new NestedSetBuilder(Order.COMPILE_ORDER).build(),
+          new NestedSetBuilder(Order.COMPILE_ORDER).build(),
+          new NestedSetBuilder(Order.COMPILE_ORDER).build(),
+          new NestedSetBuilder(Order.COMPILE_ORDER).build(),
+          new NestedSetBuilder(Order.COMPILE_ORDER).build(),
+          new NestedSetBuilder(Order.COMPILE_ORDER).build(),
+          new NestedSetBuilder(Order.COMPILE_ORDER).build(),
+          new NestedSetBuilder(Order.COMPILE_ORDER).build(),
+          directDescriptorSet,
+          new NestedSetBuilder(Order.COMPILE_ORDER).build(),
+          loc);
     }
   }
 

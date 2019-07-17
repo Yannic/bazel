@@ -49,7 +49,7 @@ public class ProtoLangToolchain implements RuleConfiguredTargetFactory {
     }
 
     return new RuleConfiguredTargetBuilder(ruleContext)
-        .addProvider(
+        .addNativeDeclaredProvider(
             ProtoLangToolchainProvider.create(
                 ruleContext.attributes().get("command_line", Type.STRING),
                 ruleContext.getPrerequisite("plugin", HOST, FilesToRunProvider.class),

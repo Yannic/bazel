@@ -79,6 +79,8 @@ public class JavaProtoSkylarkCommon
       SkylarkRuleContext skylarkRuleContext, String protoToolchainAttr) throws EvalException {
     ConfiguredTarget javaliteToolchain =
         (ConfiguredTarget) checkNotNull(skylarkRuleContext.getAttr().getValue(protoToolchainAttr));
-    return checkNotNull(javaliteToolchain.getProvider(ProtoLangToolchainProvider.class));
+    return checkNotNull(
+        (ProtoLangToolchainProvider) javaliteToolchain.get(
+            ProtoLangToolchainProvider.PROVIDER.id()));
   }
 }

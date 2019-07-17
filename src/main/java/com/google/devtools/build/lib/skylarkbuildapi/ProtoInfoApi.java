@@ -16,16 +16,73 @@ package com.google.devtools.build.lib.skylarkbuildapi;
 
 import com.google.common.collect.ImmutableList;
 import com.google.devtools.build.lib.collect.nestedset.NestedSet;
+import com.google.devtools.build.lib.events.Location;
+import com.google.devtools.build.lib.skylarkinterface.Param;
 import com.google.devtools.build.lib.skylarkinterface.SkylarkCallable;
+import com.google.devtools.build.lib.skylarkinterface.SkylarkConstructor;
 import com.google.devtools.build.lib.skylarkinterface.SkylarkModule;
+import com.google.devtools.build.lib.syntax.EvalException;
+import com.google.devtools.build.lib.syntax.SkylarkList;
+import com.google.devtools.build.lib.syntax.SkylarkNestedSet;
 
 /** Info object propagating information about protocol buffer sources. */
 @SkylarkModule(name = "ProtoInfo", doc = "")
 public interface ProtoInfoApi<FileT extends FileApi> extends StructApi {
   /** Provider class for {@link ProtoInfoApi} objects. */
   @SkylarkModule(name = "Provider", documented = false, doc = "")
-  interface Provider extends ProviderApi {
-    // Currently empty. ProtoInfo cannot be created from Starlark at the moment.
+  interface Provider<FileT extends FileApi> extends ProviderApi {
+    @SkylarkCallable(
+        name = "ProtoInfo",
+        doc = "The <code>ProtoInfo</code> constructor.",
+        parameters = {
+          @Param(
+              name = "transitive_imports",
+              type = SkylarkNestedSet.class,
+              generic1 = FileApi.class,
+              positional = false,
+              named = true,
+              doc = "The value for the new object's <code>transitive_imports</code> field."),
+          @Param(
+              name = "transitive_sources",
+              type = SkylarkNestedSet.class,
+              generic1 = FileApi.class,
+              positional = false,
+              named = true,
+              doc = "The value for the new object's <code>transitive_sources</code> field."),
+          @Param(
+              name = "direct_sources",
+              type = SkylarkList.class,
+              generic1 = FileApi.class,
+              positional = false,
+              named = true,
+              doc = "The value for the new object's <code>direct_sources</code> field."),
+          @Param(
+              name = "check_deps_sources",
+              type = SkylarkNestedSet.class,
+              generic1 = FileApi.class,
+              positional = false,
+              named = true,
+              doc = "The value for the new object's <code>check_deps_sources</code> field."),
+          @Param(
+              name = "direct_descriptor_set",
+              type = FileApi.class,
+              noneable = true,
+              positional = false,
+              named = true,
+              defaultValue = "None",
+              doc = "The value for the new object's <code>direct_descriptor_set</code> field."),
+        },
+        selfCall = true,
+        useLocation = true)
+    @SkylarkConstructor(objectType = ProtoInfoApi.class, receiverNameForDoc = "ProtoInfo")
+    ProtoInfoApi<?> constructor(
+        SkylarkNestedSet transitiveImports,
+        SkylarkNestedSet transitiveSources,
+        SkylarkList directSources,
+        SkylarkNestedSet checkDepsSources,
+        FileT directDescriptorSet,
+        Location loc)
+        throws EvalException;
   }
 
   @SkylarkCallable(

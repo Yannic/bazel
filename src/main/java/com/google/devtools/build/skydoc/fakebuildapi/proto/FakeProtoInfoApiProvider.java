@@ -14,12 +14,29 @@
 
 package com.google.devtools.build.skydoc.fakebuildapi.proto;
 
+import com.google.devtools.build.lib.events.Location;
+import com.google.devtools.build.lib.skylarkbuildapi.FileApi;
 import com.google.devtools.build.lib.skylarkbuildapi.ProtoInfoApi;
 import com.google.devtools.build.lib.skylarkinterface.SkylarkPrinter;
+import com.google.devtools.build.lib.syntax.EvalException;
+import com.google.devtools.build.lib.syntax.SkylarkList;
+import com.google.devtools.build.lib.syntax.SkylarkNestedSet;
 
 /** Fake implementation of {@link ProtoInfoApi.Provider}. */
-public class FakeProtoInfoApiProvider implements ProtoInfoApi.Provider {
+public class FakeProtoInfoApiProvider implements ProtoInfoApi.Provider<FileApi> {
 
   @Override
   public void repr(SkylarkPrinter printer) {}
+
+  @Override
+  public ProtoInfoApi<?> constructor(
+      SkylarkNestedSet transitiveImports,
+      SkylarkNestedSet transitiveSources,
+      SkylarkList directSources,
+      SkylarkNestedSet checkDepsSources,
+      FileApi directDescriptorSet,
+      Location loc)
+      throws EvalException {
+    return null;
+  }
 }
