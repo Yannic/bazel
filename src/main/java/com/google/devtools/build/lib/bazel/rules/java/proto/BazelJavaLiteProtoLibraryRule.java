@@ -61,9 +61,7 @@ public class BazelJavaLiteProtoLibraryRule implements RuleDefinition {
         .add(attr("strict_deps", BOOLEAN).value(true).undocumented("for migration"))
         .add(
             attr(JavaProtoAspectCommon.LITE_PROTO_TOOLCHAIN_ATTR, LABEL)
-                .mandatoryNativeProviders(
-                    ImmutableList.<Class<? extends TransitiveInfoProvider>>of(
-                        ProtoLangToolchainProvider.class))
+                .mandatoryProviders(ProtoLangToolchainProvider.PROVIDER.id())
                 .value(getProtoToolchainLabel(DEFAULT_PROTO_TOOLCHAIN_LABEL)))
         .advertiseSkylarkProvider(SkylarkProviderIdentifier.forKey(JavaInfo.PROVIDER.getKey()))
         .build();

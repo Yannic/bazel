@@ -35,16 +35,19 @@ public class ProtoBootstrap implements Bootstrap {
   private final Object protoModule;
   private final SkylarkAspectApi protoRegistryAspect;
   private final ProviderApi protoRegistryProvider;
+  private final ProviderApi protoLangToolchainInfo;
 
   public ProtoBootstrap(
       ProtoInfoApi.Provider protoInfoApiProvider,
       Object protoModule,
       SkylarkAspectApi protoRegistryAspect,
-      ProviderApi protoRegistryProvider) {
+      ProviderApi protoRegistryProvider,
+      ProviderApi protoLangToolchainInfo) {
     this.protoInfoApiProvider = protoInfoApiProvider;
     this.protoModule = protoModule;
     this.protoRegistryAspect = protoRegistryAspect;
     this.protoRegistryProvider = protoRegistryProvider;
+    this.protoLangToolchainInfo = protoLangToolchainInfo;
   }
 
   @Override
@@ -59,5 +62,6 @@ public class ProtoBootstrap implements Bootstrap {
         "ProtoRegistryProvider",
         FlagGuardedValue.onlyWhenExperimentalFlagIsTrue(
             FlagIdentifier.EXPERIMENTAL_GOOGLE_LEGACY_API, protoRegistryProvider));
+    builder.put("ProtoLangToolchainInfo_DoNotUseWillBreak", protoLangToolchainInfo);
   }
 }

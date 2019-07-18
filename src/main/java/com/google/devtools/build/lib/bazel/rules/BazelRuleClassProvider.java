@@ -89,6 +89,7 @@ import com.google.devtools.build.lib.rules.proto.BazelProtoLibraryRule;
 import com.google.devtools.build.lib.rules.proto.BazelProtoModule;
 import com.google.devtools.build.lib.rules.proto.ProtoConfiguration;
 import com.google.devtools.build.lib.rules.proto.ProtoInfo;
+import com.google.devtools.build.lib.rules.proto.ProtoLangToolchainProvider;
 import com.google.devtools.build.lib.rules.proto.ProtoLangToolchainRule;
 import com.google.devtools.build.lib.rules.python.PyInfo;
 import com.google.devtools.build.lib.rules.python.PyRuntimeInfo;
@@ -259,7 +260,8 @@ public class BazelRuleClassProvider {
                   ProtoInfo.PROVIDER,
                   BazelProtoModule.INSTANCE,
                   new SkylarkAspectStub(),
-                  new ProviderStub());
+                  new ProviderStub(),
+                  ProtoLangToolchainProvider.PROVIDER);
           builder.addSkylarkBootstrap(bootstrap);
         }
 

@@ -20,7 +20,10 @@ import com.google.devtools.build.lib.analysis.FilesToRunProvider;
 import com.google.devtools.build.lib.analysis.TransitiveInfoCollection;
 import com.google.devtools.build.lib.analysis.TransitiveInfoProvider;
 import com.google.devtools.build.lib.collect.nestedset.NestedSet;
+import com.google.devtools.build.lib.packages.BuiltinProvider;
+import com.google.devtools.build.lib.packages.NativeInfo;
 import com.google.devtools.build.lib.skyframe.serialization.autocodec.AutoCodec;
+import com.google.devtools.build.lib.skylarkbuildapi.proto.ProtoLangToolchainInfoApi;
 import javax.annotation.Nullable;
 
 // Note: AutoValue v1.4-rc1 has AutoValue.CopyAnnotations which makes it work with Skylark. No need
@@ -31,7 +34,22 @@ import javax.annotation.Nullable;
  */
 @AutoValue
 @AutoCodec
-public abstract class ProtoLangToolchainProvider implements TransitiveInfoProvider {
+public abstract class ProtoLangToolchainProvider
+    extends NativeInfo implements ProtoLangToolchainInfoApi {
+  /** Provider class for {@link ProtoLangToolchainProvider} objects. */
+  public static class Provider extends BuiltinProvider<ProtoLangToolchainProvider>
+      implements ProtoLangToolchainInfoApi.Provider {
+    public Provider() {
+      super("ProtoLangToolchainInfo_DoNotUseWillBreak", ProtoLangToolchainProvider.class);
+    }
+  }
+
+  public static final Provider PROVIDER = new Provider();
+
+  protected ProtoLangToolchainProvider() {
+    super(PROVIDER);
+  }
+
   public abstract String commandLine();
 
   @Nullable

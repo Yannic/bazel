@@ -114,9 +114,7 @@ public class JavaLiteProtoAspect extends NativeAspectClass implements Configured
             .advertiseProvider(ImmutableList.of(JavaSkylarkApiProvider.SKYLARK_NAME))
             .add(
                 attr(JavaProtoAspectCommon.LITE_PROTO_TOOLCHAIN_ATTR, LABEL)
-                    .mandatoryNativeProviders(
-                        ImmutableList.<Class<? extends TransitiveInfoProvider>>of(
-                            ProtoLangToolchainProvider.class))
+                    .mandatoryProviders(ProtoLangToolchainProvider.PROVIDER.id())
                     .value(getProtoToolchainLabel(defaultProtoToolchainLabel)))
             .add(
                 attr(HOST_JAVA_RUNTIME_ATTRIBUTE_NAME, LABEL)
