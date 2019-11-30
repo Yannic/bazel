@@ -385,6 +385,7 @@ public class CcToolchainConfigInfo extends NativeInfo implements CcToolchainConf
   private static CToolchain.Tool toolToProto(Tool tool) {
     return CToolchain.Tool.newBuilder()
         .setToolPath(tool.getToolPathFragment().toString())
+        .setToolPathIsRelativeToWorkdir(tool.getToolPathFragmentIsRelativeToWorkdir())
         .addAllWithFeature(
             tool.getWithFeatureSetSets().stream()
                 .map(withFeatureSet -> withFeatureSetToProto(withFeatureSet))

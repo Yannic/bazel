@@ -416,9 +416,9 @@ def tool_path(name, path):
     _check_is_nonempty_string(path, "path", "tool_path")
     return ToolPathInfo(name = name, path = path, type_name = "tool_path")
 
-ToolInfo = provider(fields = ["path", "with_features", "execution_requirements", "type_name"])
+ToolInfo = provider(fields = ["path", "with_features", "execution_requirements", "type_name", "path_is_relative_to_workdir"])
 
-def tool(path, with_features = [], execution_requirements = []):
+def tool(path, with_features = [], execution_requirements = [], path_is_relative_to_workdir = False):
     """ Describes a tool associated with a crosstool action config.
 
     Args:
@@ -441,10 +441,12 @@ def tool(path, with_features = [], execution_requirements = []):
     _check_is_nonempty_string(path, "path", "tool")
     _check_right_type(with_features, [], "with_features", "tool")
     _check_right_type(execution_requirements, [], "execution_requirements", "tool")
+    _check_right_type(path_is_relative_to_workdir, True, "path_is_relative_to_workdir", "tool")
     return ToolInfo(
         path = path,
         with_features = with_features,
         execution_requirements = execution_requirements,
+        path_is_relative_to_workdir = path_is_relative_to_workdir,
         type_name = "tool",
     )
 

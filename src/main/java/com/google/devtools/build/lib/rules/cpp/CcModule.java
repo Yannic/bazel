@@ -1219,8 +1219,11 @@ public abstract class CcModule
 
     ImmutableSet<String> executionRequirements =
         getStringSetFromSkylarkProviderField(toolStruct, "execution_requirements");
+
+    Boolean pathIsRelativeToWorkdir = getFieldFromSkylarkProvider(
+        toolStruct, "path_is_relative_to_workdir", Boolean.class);
     return new CcToolchainFeatures.Tool(
-        toolPath, executionRequirements, withFeatureSetBuilder.build());
+        toolPath, pathIsRelativeToWorkdir, executionRequirements, withFeatureSetBuilder.build());
   }
 
   /** Creates an {@link ActionConfig} from a {@link SkylarkInfo}. */

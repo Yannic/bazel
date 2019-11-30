@@ -791,7 +791,7 @@ public class CcToolchainFeatures implements Serializable {
         flagSetBuilder.add(new FlagSet(flagSet));
       }
       this.flagSets = flagSetBuilder.build();
-      
+
       ImmutableList.Builder<EnvSet> envSetBuilder = ImmutableList.builder();
       for (CToolchain.EnvSet flagSet : feature.getEnvSetList()) {
         envSetBuilder.add(new EnvSet(flagSet));
@@ -925,15 +925,18 @@ public class CcToolchainFeatures implements Serializable {
   @Immutable
   public static class Tool {
     private final PathFragment toolPathFragment;
+    private final boolean toolPathFragmentIsRelativeToWorkdir;
     private final ImmutableSet<String> executionRequirements;
     private final ImmutableSet<WithFeatureSet> withFeatureSetSets;
 
     private Tool(
         CToolchain.Tool tool,
         ImmutableSet<WithFeatureSet> withFeatureSetSets) {
-      this.withFeatureSetSets = withFeatureSetSets;
-      this.toolPathFragment = PathFragment.create(tool.getToolPath());
-      executionRequirements = ImmutableSet.copyOf(tool.getExecutionRequirementList());
+      this(
+          PathFragment.create(tool.getToolPath()),
+          tool.getToolPathIsRelativeToWorkdir(),
+          ImmutableSet.copyOf(tool.getExecutionRequirementList()),
+          withFeatureSetSets);
     }
 
     @VisibleForTesting
@@ -941,13 +944,26 @@ public class CcToolchainFeatures implements Serializable {
         PathFragment toolPathFragment,
         ImmutableSet<String> executionRequirements,
         ImmutableSet<WithFeatureSet> withFeatureSetSets) {
+      this(toolPathFragment, false, executionRequirements, withFeatureSetSets);
+    }
+
+    @VisibleForTesting
+    public Tool(
+        PathFragment toolPathFragment,
+        boolean toolPathFragmentIsRelativeToWorkdir,
+        ImmutableSet<String> executionRequirements,
+        ImmutableSet<WithFeatureSet> withFeatureSetSets) {
       this.toolPathFragment = toolPathFragment;
+      this.toolPathFragmentIsRelativeToWorkdir = toolPathFragmentIsRelativeToWorkdir;
       this.executionRequirements = executionRequirements;
       this.withFeatureSetSets = withFeatureSetSets;
     }
 
     /** Returns the path to this action's tool relative to the provided crosstool path. */
     String getToolPathString(PathFragment ccToolchainPath) {
+      if (toolPathFragmentIsRelativeToWorkdir) {
+        return toolPathFragment.getSafePathString();
+      }
       return ccToolchainPath.getRelative(toolPathFragment).getSafePathString();
     }
 
@@ -968,6 +984,10 @@ public class CcToolchainFeatures implements Serializable {
 
     PathFragment getToolPathFragment() {
       return toolPathFragment;
+    }
+
+    boolean getToolPathFragmentIsRelativeToWorkdir() {
+      return toolPathFragmentIsRelativeToWorkdir;
     }
   }
 
@@ -1525,7 +1545,7 @@ public class CcToolchainFeatures implements Serializable {
       }
     }
     this.defaultSelectables = defaultSelectablesBuilder.build();
-       
+
     this.selectables = selectablesBuilder.build();
     this.selectablesByName = ImmutableMap.copyOf(selectablesByName);
 

@@ -251,6 +251,8 @@ message CToolchain {
     // to be passed as out-of-band "hints" to the execution backend.
     // Ex. "requires-darwin"
     repeated string execution_requirement = 3;
+
+    optional bool tool_path_is_relative_to_workdir = 4;
   }
 
   // The name for an artifact of a given category of input or output artifacts
