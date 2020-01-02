@@ -1275,12 +1275,25 @@ public abstract class CcModule
   @VisibleForTesting
   static CcToolchainFeatures.Tool toolFromSkylark(SkylarkInfo toolStruct) throws EvalException {
     checkRightProviderType(toolStruct, "tool");
-    String toolPathString = getFieldFromSkylarkProvider(toolStruct, "path", String.class);
-    PathFragment toolPath = toolPathString == null ? null : PathFragment.create(toolPathString);
-    if (toolPath != null && toolPath.isEmpty()) {
+
+    String toolPathString = getFieldFromSkylarkProvider(
+        toolStruct, "path", String.class, /** mandatory= */ false);
+    Artifact toolArtifact = getFieldFromSkylarkProvider(
+         toolStruct, "tool", Artifact.class, /** mandatory= */ false);
+    if ((toolPathString == null && toolArtifact == null) ||
+        (toolPathString != null && toolArtifact != null)) {
       throw new EvalException(
-          toolStruct.getCreationLoc(), "The 'path' field of tool must be a nonempty string.");
+          toolStruct.getCreationLoc(),
+          "Exactly one of parameters 'path' or 'tool' of tool is required.");
     }
+    if (toolPathString != null && toolPathString.isEmpty()) {
+      throw new EvalException(
+          toolStruct.getCreationLoc(),
+          "If set, the 'path' field of tool must be a nonempty string.");
+    }
+    PathFragment toolPath =
+        toolArtifact != null ? toolArtifact.getExecPath() : PathFragment.create(toolPathString);
+
     ImmutableSet.Builder<WithFeatureSet> withFeatureSetBuilder = ImmutableSet.builder();
     ImmutableList<SkylarkInfo> withFeatureSetStructs =
         getSkylarkProviderListFromSkylarkField(toolStruct, "with_features");
@@ -1291,7 +1304,7 @@ public abstract class CcModule
     ImmutableSet<String> executionRequirements =
         getStringSetFromSkylarkProviderField(toolStruct, "execution_requirements");
     return new CcToolchainFeatures.Tool(
-        toolPath, executionRequirements, withFeatureSetBuilder.build());
+        toolPath, toolArtifact != null, executionRequirements, withFeatureSetBuilder.build());
   }
 
   /** Creates an {@link ActionConfig} from a {@link SkylarkInfo}. */
@@ -1384,10 +1397,18 @@ public abstract class CcModule
 
   private static <T> T getFieldFromSkylarkProvider(
       SkylarkInfo provider, String fieldName, Class<T> clazz) throws EvalException {
+    return getFieldFromSkylarkProvider(provider, fieldName, clazz, /* mandatory= */ true);
+  }
+
+  private static <T> T getFieldFromSkylarkProvider(
+      SkylarkInfo provider, String fieldName, Class<T> clazz, boolean mandatory) throws EvalException {
     Object obj = provider.getValue(fieldName);
     if (obj == null) {
-      throw new EvalException(
-          provider.getCreationLoc(), String.format("Missing mandatory field '%s'", fieldName));
+      if (mandatory) {
+        throw new EvalException(
+            provider.getCreationLoc(), String.format("Missing mandatory field '%s'", fieldName));
+      }
+      return null;
     }
     if (clazz.isInstance(obj)) {
       return clazz.cast(obj);

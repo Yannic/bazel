@@ -235,8 +235,18 @@ message CToolchain {
 
   // Describes a tool associated with a crosstool action config.
   message Tool {
-    // Path to the tool, relative to the location of the crosstool.
+    // Path to the tool. This can either be an absolute path (starting with '/')
+    // or a relative path. For relative paths,
+    // |tool_path_is_relative_to_workspace_execution_directory| indicates
+    // whether the path is relative to the workspace's execution directory
+    // (i.e. like paths of Artifacts are), or relative to the location of the
+    // crosstool.
     required string tool_path = 1;
+
+    // Indicates that |tool_path| is relative
+    // to the workspace's execution directory.
+    optional bool tool_path_is_relative_to_workspace_execution_directory = 4
+        [default = false];
 
     // A list of feature sets defining when this tool is applicable.  The tool
     // will used when any one of the feature sets evaluate to true. (That is,

@@ -791,7 +791,7 @@ public class CcToolchainFeatures implements Serializable {
         flagSetBuilder.add(new FlagSet(flagSet));
       }
       this.flagSets = flagSetBuilder.build();
-      
+
       ImmutableList.Builder<EnvSet> envSetBuilder = ImmutableList.builder();
       for (CToolchain.EnvSet flagSet : feature.getEnvSetList()) {
         envSetBuilder.add(new EnvSet(flagSet));
@@ -925,6 +925,7 @@ public class CcToolchainFeatures implements Serializable {
   @Immutable
   public static class Tool {
     private final PathFragment toolPathFragment;
+    private final boolean toolPathFragmentIsRelativeToWorkspaceExecutionDirectory;
     private final ImmutableSet<String> executionRequirements;
     private final ImmutableSet<WithFeatureSet> withFeatureSetSets;
 
@@ -933,6 +934,8 @@ public class CcToolchainFeatures implements Serializable {
         ImmutableSet<WithFeatureSet> withFeatureSetSets) {
       this.withFeatureSetSets = withFeatureSetSets;
       this.toolPathFragment = PathFragment.create(tool.getToolPath());
+      this.toolPathFragmentIsRelativeToWorkspaceExecutionDirectory =
+          tool.getToolPathIsRelativeToWorkspaceExecutionDirectory();
       executionRequirements = ImmutableSet.copyOf(tool.getExecutionRequirementList());
     }
 
@@ -941,7 +944,18 @@ public class CcToolchainFeatures implements Serializable {
         PathFragment toolPathFragment,
         ImmutableSet<String> executionRequirements,
         ImmutableSet<WithFeatureSet> withFeatureSetSets) {
+      this(toolPathFragment, false, executionRequirements, withFeatureSetSets);
+    }
+
+    @VisibleForTesting
+    public Tool(
+        PathFragment toolPathFragment,
+        boolean toolPathFragmentIsRelativeToWorkspaceExecutionDirectory,
+        ImmutableSet<String> executionRequirements,
+        ImmutableSet<WithFeatureSet> withFeatureSetSets) {
       this.toolPathFragment = toolPathFragment;
+      this.toolPathFragmentIsRelativeToWorkspaceExecutionDirectory =
+          toolPathFragmentIsRelativeToWorkspaceExecutionDirectory;
       this.executionRequirements = executionRequirements;
       this.withFeatureSetSets = withFeatureSetSets;
     }
@@ -968,6 +982,10 @@ public class CcToolchainFeatures implements Serializable {
 
     PathFragment getToolPathFragment() {
       return toolPathFragment;
+    }
+
+    boolean getToolPathFragmentIsRelativeToWorkspaceExecutionDirectory() {
+      return toolPathFragmentIsRelativeToWorkspaceExecutionDirectory;
     }
   }
 
@@ -1525,7 +1543,7 @@ public class CcToolchainFeatures implements Serializable {
       }
     }
     this.defaultSelectables = defaultSelectablesBuilder.build();
-       
+
     this.selectables = selectablesBuilder.build();
     this.selectablesByName = ImmutableMap.copyOf(selectablesByName);
 

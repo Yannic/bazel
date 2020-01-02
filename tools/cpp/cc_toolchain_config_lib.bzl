@@ -14,12 +14,24 @@
 
 """ A library of functions creating structs for CcToolchainConfigInfo."""
 
+def _check_oneof(obj1, parameter_name1, obj2, parameter_name2, method_name):
+    if (obj1 == None && obj2 == None) || (obj1 != None && obj2 != None):
+        fail("Exactly one of parameters '{}' or '{}' of {}} is required."
+            .format(parameter_name1, parameter_name2, method_name))
+
 def _check_is_none_or_right_type(obj, obj_of_right_type, parameter_name, method_name):
     if obj != None:
         _check_right_type(obj, obj_of_right_type, parameter_name, method_name)
 
 def _check_right_type(obj, obj_of_right_type, parameter_name, method_name):
-    if type(obj) != type(obj_of_right_type):
+    _check_has_type_with_name(obj, type(obj_of_right_type), parameter_name, method_name)
+
+def _check_is_none_or_has_type_with_name(obj, type_name, parameter_name, method_name):
+    if obj != None:
+        _check_has_type_with_name(obj, type_name, parameter_name, method_name)
+
+def _check_has_type_with_name(obj, type_name, parameter_name, method_name):
+    if type(obj) != type_name:
         fail("{} parameter of {} should be a {}, found {}."
             .format(parameter_name, method_name, type(obj_of_right_type), type(obj)))
 
@@ -28,6 +40,10 @@ def _check_is_nonempty_string(obj, parameter_name, method_name):
     if obj == "":
         fail("{} parameter of {} must be a nonempty string."
             .format(parameter_name, method_name))
+
+def _check_is_none_or_nonempty_string(obj, parameter_name, method_name):
+    if obj != None:
+        _check_is_nonempty_string(obj, parameter_name, method_name)
 
 def _check_is_nonempty_list(obj, parameter_name, method_name):
     _check_right_type(obj, [], parameter_name, method_name)
@@ -416,10 +432,14 @@ def tool_path(name, path):
     _check_is_nonempty_string(path, "path", "tool_path")
     return ToolPathInfo(name = name, path = path, type_name = "tool_path")
 
-ToolInfo = provider(fields = ["path", "with_features", "execution_requirements", "type_name"])
+ToolInfo = provider(fields = ["path", "tool", "with_features", "execution_requirements", "type_name"])
 
-def tool(path, with_features = [], execution_requirements = []):
-    """ Describes a tool associated with a crosstool action config.
+def tool(
+        path = None,
+        tool = None,
+        with_features = [],
+        execution_requirements = []):
+    """Describes a tool associated with a crosstool action config.
 
     Args:
         path: Location of the tool; Can be absolute path (in case of non hermetic
@@ -438,11 +458,14 @@ def tool(path, with_features = [], execution_requirements = []):
     Returns:
         A ToolInfo provider.
     """
-    _check_is_nonempty_string(path, "path", "tool")
+    _check_oneof(path, "path", tool, "tool", "tool")
+    _check_is_none_or_nonempty_string(path, "path", "tool")
+    _check_is_none_or_has_type_with_name(tool, "File", "tool", "tool")
     _check_right_type(with_features, [], "with_features", "tool")
     _check_right_type(execution_requirements, [], "execution_requirements", "tool")
     return ToolInfo(
         path = path,
+        tool = tool,
         with_features = with_features,
         execution_requirements = execution_requirements,
         type_name = "tool",

@@ -3197,6 +3197,20 @@ public class SkylarkCcCommonTest extends BuildViewTestCase {
   }
 
   @Test
+  public void testCustomTool_path_notSet() throws Exception {
+    loadCcToolchainConfigLib();
+    createCustomToolRule(
+        "one", /* path= */ "None", /* withFeatures= */ "[]", /* requirements= */ "[]");
+
+    ConfiguredTarget t = getConfiguredTarget("//one:a");
+    SkylarkInfo toolStruct = (SkylarkInfo) getMyInfoFromTarget(t).getValue("tool");
+    assertThat(toolStruct).isNotNull();
+    EvalException e = assertThrows(EvalException.class, () -> CcModule.toolFromSkylark(toolStruct));
+    assertThat(e).hasMessageThat().contains(
+        "Exactly one of parameters 'path' or 'tool' of tool is required.");
+  }
+
+  @Test
   public void testCustomTool_path_nonEmpty() throws Exception {
     loadCcToolchainConfigLib();
     createCustomToolRule(
@@ -3206,7 +3220,8 @@ public class SkylarkCcCommonTest extends BuildViewTestCase {
     SkylarkInfo toolStruct = (SkylarkInfo) getMyInfoFromTarget(t).getValue("tool");
     assertThat(toolStruct).isNotNull();
     EvalException e = assertThrows(EvalException.class, () -> CcModule.toolFromSkylark(toolStruct));
-    assertThat(e).hasMessageThat().contains("The 'path' field of tool must be a nonempty string.");
+    assertThat(e).hasMessageThat().contains(
+        "If set, the 'path' field of tool must be a nonempty string.");
   }
 
   @Test
