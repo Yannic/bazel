@@ -444,6 +444,7 @@ def tool(
     Args:
         path: Location of the tool; Can be absolute path (in case of non hermetic
             toolchain), or path relative to the cc_toolchain's package.
+        tool: |o|.
         with_features: A list of feature sets defining when this tool is
             applicable. The tool will used when any one of the feature sets
             evaluate to true. (That is, when when every 'feature' is enabled,
