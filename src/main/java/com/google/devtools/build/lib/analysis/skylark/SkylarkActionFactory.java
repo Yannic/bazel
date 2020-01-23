@@ -23,6 +23,8 @@ import com.google.devtools.build.lib.actions.ActionAnalysisMetadata;
 import com.google.devtools.build.lib.actions.ActionLookupValue;
 import com.google.devtools.build.lib.actions.ActionRegistry;
 import com.google.devtools.build.lib.actions.Artifact;
+import com.google.devtools.build.lib.actions.Artifact.SpecialArtifact;
+import com.google.devtools.build.lib.actions.Artifact.TreeFileArtifact;
 import com.google.devtools.build.lib.actions.ArtifactRoot;
 import com.google.devtools.build.lib.actions.CommandLine;
 import com.google.devtools.build.lib.actions.ParamFileInfo;
@@ -36,9 +38,12 @@ import com.google.devtools.build.lib.analysis.PseudoAction;
 import com.google.devtools.build.lib.analysis.RuleContext;
 import com.google.devtools.build.lib.analysis.ShToolchain;
 import com.google.devtools.build.lib.analysis.actions.ActionConstructionContext;
+import com.google.devtools.build.lib.analysis.actions.CustomCommandLine;
 import com.google.devtools.build.lib.analysis.actions.FileWriteAction;
 import com.google.devtools.build.lib.analysis.actions.ParameterFileWriteAction;
 import com.google.devtools.build.lib.analysis.actions.SpawnAction;
+import com.google.devtools.build.lib.analysis.actions.SpawnActionTemplate;
+import com.google.devtools.build.lib.analysis.actions.SpawnActionTemplate.OutputPathMapper;
 import com.google.devtools.build.lib.analysis.actions.StarlarkAction;
 import com.google.devtools.build.lib.analysis.actions.Substitution;
 import com.google.devtools.build.lib.analysis.actions.SymlinkAction;
@@ -58,10 +63,12 @@ import com.google.devtools.build.lib.syntax.EvalUtils;
 import com.google.devtools.build.lib.syntax.Printer;
 import com.google.devtools.build.lib.syntax.Sequence;
 import com.google.devtools.build.lib.syntax.Starlark;
+import com.google.devtools.build.lib.syntax.StarlarkFunction;
 import com.google.devtools.build.lib.syntax.StarlarkSemantics;
 import com.google.devtools.build.lib.syntax.StarlarkThread;
 import com.google.devtools.build.lib.vfs.PathFragment;
 import com.google.protobuf.GeneratedMessage;
+import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -690,6 +697,43 @@ public class SkylarkActionFactory implements SkylarkActionFactoryApi {
   @Override
   public Args args(StarlarkThread thread) {
     return Args.newArgs(thread.mutability(), starlarkSemantics);
+  }
+
+  @Override
+  public void actionTemplate(
+      StarlarkFunction implementation,
+      Object executableUnchecked,
+      FileApi inputTree,
+      FileApi outputTree,
+      Location loc,
+      StarlarkThread thread)
+      throws EvalException {
+
+    SpawnActionTemplate.Builder builder =
+        new SpawnActionTemplate.Builder((SpecialArtifact)inputTree, (SpecialArtifact)outputTree)
+            .setMnemonics("FooToBuild", "Foo")
+            .setOutputPathMapper(
+                (OutputPathMapper & Serializable) TreeFileArtifact::getParentRelativePath)
+            .setCommandLineTemplate(CustomCommandLine.builder().build());
+
+    if (executableUnchecked instanceof Artifact) {
+      Artifact executable = (Artifact) executableUnchecked;
+      FilesToRunProvider provider = context.getExecutableRunfiles(executable);
+      if (provider == null) {
+        builder.setExecutable(executable);
+      } else {
+        builder.setExecutable(provider);
+      }
+    } else if (executableUnchecked instanceof String) {
+      builder.setExecutable(PathFragment.create((String) executableUnchecked));
+    } else if (executableUnchecked instanceof FilesToRunProvider) {
+      builder.setExecutable((FilesToRunProvider) executableUnchecked);
+    } else {
+      // Should have been verified by Starlark before this function is called
+      throw new IllegalStateException();
+    }
+
+    registerAction(loc, builder.build(ruleContext.getActionOwner()));
   }
 
   @Override
