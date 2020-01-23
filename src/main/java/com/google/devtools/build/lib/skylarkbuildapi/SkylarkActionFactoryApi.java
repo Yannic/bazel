@@ -24,6 +24,7 @@ import com.google.devtools.build.lib.syntax.Depset;
 import com.google.devtools.build.lib.syntax.Dict;
 import com.google.devtools.build.lib.syntax.EvalException;
 import com.google.devtools.build.lib.syntax.Sequence;
+import com.google.devtools.build.lib.syntax.StarlarkFunction;
 import com.google.devtools.build.lib.syntax.StarlarkThread;
 import com.google.devtools.build.lib.syntax.StarlarkValue;
 
@@ -587,4 +588,48 @@ public interface SkylarkActionFactoryApi extends StarlarkValue {
       doc = "Returns an Args object that can be used to build memory-efficient command lines.",
       useStarlarkThread = true)
   CommandLineArgsApi args(StarlarkThread thread);
+
+  @SkylarkCallable(
+      name = "experimental_action_template",
+      doc = "TODO",
+      parameters = {
+        @Param(
+            name = "implementation",
+            type = StarlarkFunction.class,
+            named = true,
+            doc = "TODO"),
+        @Param(
+            name = "executable",
+            type = Object.class,
+            allowedTypes = {
+              @ParamType(type = FileApi.class),
+              @ParamType(type = String.class),
+              @ParamType(type = FilesToRunProviderApi.class),
+            },
+            named = true,
+            positional = false,
+            doc = "The executable file to be called by the action."),
+        @Param(
+            name = "input_tree",
+            type = FileApi.class,
+            named = true,
+            positional = false,
+            doc = "TODO"),
+        @Param(
+            name = "output_tree",
+            type = FileApi.class,
+            named = true,
+            positional = false,
+            doc = "TODO"),
+      },
+      useLocation = true,
+      useStarlarkThread = true)
+  void actionTemplate(
+      StarlarkFunction implementation,
+      Object executableUnchecked,
+      FileApi inputTree,
+      FileApi outputTree,
+      Location loc,
+      StarlarkThread thread)
+      throws EvalException;
 }
