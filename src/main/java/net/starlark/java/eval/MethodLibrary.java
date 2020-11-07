@@ -15,13 +15,10 @@
 package net.starlark.java.eval;
 
 import com.google.common.base.Ascii;
-import com.google.common.collect.Lists;
 import com.google.common.collect.Ordering;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Iterator;
-import java.util.List;
 import java.util.NoSuchElementException;
 import net.starlark.java.annot.Param;
 import net.starlark.java.annot.ParamType;
@@ -484,21 +481,21 @@ class MethodLibrary {
               + "positional argument.",
       parameters = {
         @Param(
-            name = "args",
+            name = "pairs",
             defaultValue = "[]",
-            doc =
-                "Either a dictionary or a list of entries. Entries must be tuples or lists with "
-                    + "exactly two elements: key, value."),
+            doc = "A dict, or an iterable whose elements are each of length 2 (key, value)."),
       },
       extraKeywords = @Param(name = "kwargs", doc = "Dictionary of additional entries."),
       useStarlarkThread = true)
-  public Dict<?, ?> dict(Object args, Dict<String, Object> kwargs, StarlarkThread thread)
+  public Dict<?, ?> dict(Object pairs, Dict<String, Object> kwargs, StarlarkThread thread)
       throws EvalException {
-    Dict<?, ?> dict =
-        args instanceof Dict
-            ? (Dict) args
-            : Dict.getDictFromArgs("dict", args, thread.mutability());
-    return Dict.plus(dict, kwargs, thread.mutability());
+    // common case: dict(k=v, ...)
+    if (pairs instanceof StarlarkList && ((StarlarkList) pairs).isEmpty()) {
+      return kwargs;
+    }
+    Dict<Object, Object> dict = Dict.of(thread.mutability());
+    Dict.update("dict", dict, pairs, kwargs);
+    return dict;
   }
 
   @StarlarkMethod(
@@ -754,27 +751,27 @@ class MethodLibrary {
       extraPositionals = @Param(name = "args", doc = "lists to zip."),
       useStarlarkThread = true)
   public StarlarkList<?> zip(Sequence<?> args, StarlarkThread thread) throws EvalException {
-    Iterator<?>[] iterators = new Iterator<?>[args.size()];
-    for (int i = 0; i < args.size(); i++) {
-      iterators[i] = Starlark.toIterable(args.get(i)).iterator();
-    }
-    ArrayList<Tuple> result = new ArrayList<>();
-    boolean allHasNext;
-    do {
-      allHasNext = !args.isEmpty();
-      List<Object> elem = Lists.newArrayListWithExpectedSize(args.size());
-      for (Iterator<?> iterator : iterators) {
-        if (iterator.hasNext()) {
-          elem.add(iterator.next());
-        } else {
-          allHasNext = false;
+    StarlarkList.Builder<Tuple> result = StarlarkList.builder();
+    int ncols = args.size();
+    if (ncols > 0) {
+      Iterator<?>[] iterators = new Iterator<?>[ncols];
+      for (int i = 0; i < ncols; i++) {
+        iterators[i] = Starlark.toIterable(args.get(i)).iterator();
+      }
+      rows:
+      for (; ; ) {
+        Object[] elem = new Object[ncols];
+        for (int i = 0; i < ncols; i++) {
+          Iterator<?> it = iterators[i];
+          if (!it.hasNext()) {
+            break rows;
+          }
+          elem[i] = it.next();
         }
+        result.add(Tuple.wrap(elem));
       }
-      if (allHasNext) {
-        result.add(Tuple.copyOf(elem));
-      }
-    } while (allHasNext);
-    return StarlarkList.copyOf(thread.mutability(), result);
+    }
+    return result.build(thread.mutability());
   }
 
   /** Starlark bool type. */

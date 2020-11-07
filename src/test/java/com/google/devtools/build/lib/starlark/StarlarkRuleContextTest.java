@@ -61,7 +61,6 @@ import java.util.List;
 import java.util.Map;
 import net.starlark.java.eval.Dict;
 import net.starlark.java.eval.EvalException;
-import net.starlark.java.eval.Mutability;
 import net.starlark.java.eval.Sequence;
 import net.starlark.java.eval.Starlark;
 import net.starlark.java.eval.StarlarkInt;
@@ -2312,7 +2311,7 @@ public final class StarlarkRuleContextTest extends BuildViewTestCase {
 
     Object substitutionsUnchecked = ev.eval("action.substitutions");
     assertThat(substitutionsUnchecked).isInstanceOf(Dict.class);
-    assertThat(substitutionsUnchecked).isEqualTo(Dict.of((Mutability) null, "a", "b"));
+    assertThat(substitutionsUnchecked).isEqualTo(ImmutableMap.of("a", "b"));
   }
 
   private void setUpCoverageInstrumentedTest() throws Exception {
@@ -3014,6 +3013,6 @@ public final class StarlarkRuleContextTest extends BuildViewTestCase {
 
     setRuleContext(createRuleContext("@foo//bar:baz"));
     Object result = ev.eval("ruleContext.build_file_path");
-    assertThat(result).isEqualTo("foo/bar/BUILD");
+    assertThat(result).isEqualTo("bar/BUILD");
   }
 }

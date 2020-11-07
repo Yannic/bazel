@@ -15,7 +15,6 @@ package net.starlark.java.eval;
 
 import com.google.common.base.Strings;
 import java.util.IllegalFormatException;
-import net.starlark.java.syntax.Location;
 import net.starlark.java.syntax.TokenKind;
 
 /** Internal declarations used by the evaluator. */
@@ -460,14 +459,14 @@ final class EvalUtils {
     if (object instanceof Dict) {
       @SuppressWarnings("unchecked")
       Dict<Object, Object> dict = (Dict<Object, Object>) object;
-      dict.put(key, value, (Location) null);
+      dict.putEntry(key, value);
 
     } else if (object instanceof StarlarkList) {
       @SuppressWarnings("unchecked")
       StarlarkList<Object> list = (StarlarkList<Object>) object;
       int index = Starlark.toInt(key, "list index");
       index = EvalUtils.getSequenceIndex(index, list.size());
-      list.set(index, value, (Location) null);
+      list.setElementAt(index, value);
 
     } else {
       throw Starlark.errorf(
@@ -478,8 +477,8 @@ final class EvalUtils {
 
   /** Updates the named field of x as if by the Starlark statement {@code x.field = value}. */
   static void setField(Object x, String field, Object value) throws EvalException {
-    if (x instanceof ClassObject) {
-      ((ClassObject) x).setField(field, value);
+    if (x instanceof Structure) {
+      ((Structure) x).setField(field, value);
     } else {
       throw Starlark.errorf("cannot set .%s field of %s value", field, Starlark.type(x));
     }
