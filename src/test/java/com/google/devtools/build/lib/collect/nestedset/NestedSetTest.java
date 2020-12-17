@@ -53,6 +53,14 @@ public final class NestedSetTest {
   }
 
   @Test
+  public void simpleTransform() {
+    NestedSet<String> set = nestedSetBuilder("a").build().transform(s -> s + s);
+
+    assertThat(set.toList()).containsExactly("aa");
+    assertThat(set.isEmpty()).isFalse();
+  }
+
+  @Test
   public void flatToString() {
     assertThat(nestedSetBuilder().build().toString()).isEqualTo("[]");
     assertThat(nestedSetBuilder("a").build().toString()).isEqualTo("[a]");

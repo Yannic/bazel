@@ -18,6 +18,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.collect.Iterables;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.devtools.build.lib.bugreport.BugReport;
@@ -41,6 +42,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import com.google.common.base.Function;
 import java.util.function.Predicate;
 import javax.annotation.Nullable;
 
@@ -236,6 +238,12 @@ public final class NestedSet<E> {
     this.memo = memo;
   }
 
+  private <T> NestedSet(Function<T, E> transformer, NestedSet<T> other) {
+    this.depthAndOrder = other.depthAndOrder;
+    this.children = new Object[] {transformer, other};
+    this.memo = NO_MEMO;  // By definition.
+  }
+
   /**
    * Constructs a NestedSet that is currently being deserialized. The provided future, when
    * complete, gives the contents of the NestedSet.
@@ -419,6 +427,11 @@ public final class NestedSet<E> {
    */
   public ImmutableList<E> toListInterruptibly()
       throws InterruptedException, MissingNestedSetException {
+    return toListInterruptibly(null);
+  }
+
+  private ImmutableList<E> toListInterruptibly(@Nullable Function<?, E> transformer)
+      throws InterruptedException, MissingNestedSetException {
     Object actualChildren;
     if (children instanceof ListenableFuture) {
       actualChildren =
@@ -427,7 +440,7 @@ public final class NestedSet<E> {
     } else {
       actualChildren = children;
     }
-    return actualChildrenToList(actualChildren);
+    return actualChildrenToList(actualChildren, transformer);
   }
 
   /**
@@ -444,6 +457,11 @@ public final class NestedSet<E> {
    */
   public ImmutableList<E> toListWithTimeout(Duration timeout)
       throws InterruptedException, TimeoutException, MissingNestedSetException {
+    return toListWithTimeout(timeout, null);
+  }
+
+  private ImmutableList<E> toListWithTimeout(Duration timeout, @Nullable Function<?, E> transformer)
+      throws InterruptedException, TimeoutException, MissingNestedSetException {
     Object actualChildren;
     if (children instanceof ListenableFuture) {
       try {
@@ -457,7 +475,7 @@ public final class NestedSet<E> {
     } else {
       actualChildren = children;
     }
-    return actualChildrenToList(actualChildren);
+    return actualChildrenToList(actualChildren, transformer);
   }
 
   /**
@@ -468,21 +486,26 @@ public final class NestedSet<E> {
    * efficiency, as it saves an iteration.
    */
   public ImmutableList<E> toList() {
-    return actualChildrenToList(getChildrenUninterruptibly());
+    return toList(null);
+  }
+
+  private ImmutableList<E> toList(@Nullable Function<?, E> transformer) {
+    return actualChildrenToList(getChildrenUninterruptibly(), transformer);
   }
 
   /**
    * Private implementation of toList which takes the actual children (the deserialized {@code
    * Object[]} if {@link #children} is a {@link ListenableFuture}).
    */
-  private ImmutableList<E> actualChildrenToList(Object actualChildren) {
+  private ImmutableList<E> actualChildrenToList(
+      Object actualChildren, @Nullable Function<?, E> transformer) {
     if (actualChildren == EMPTY_CHILDREN) {
       return ImmutableList.of();
     }
     if (!(actualChildren instanceof Object[])) {
       return ImmutableList.of((E) actualChildren);
     }
-    ImmutableList<E> list = expand((Object[]) actualChildren);
+    ImmutableList<E> list = expand((Object[]) actualChildren, transformer);
     return getOrder() == Order.LINK_ORDER ? list.reverse() : list;
   }
 
@@ -593,18 +616,22 @@ public final class NestedSet<E> {
    * this.memo}: wrap our direct items in a list, call {@link #lockedExpand} to perform the initial
    * {@link #walk}, or call {@link #replay} if we have a nontrivial memo.
    */
-  private ImmutableList<E> expand(Object[] children) {
+  private ImmutableList<E> expand(Object[] children, @Nullable Function<?, E> transformer) {
     // This value is only set in the constructor, so safe to test here with no lock.
     if (memo == NO_MEMO) {
       return ImmutableList.copyOf(new ArraySharingCollection<>(children));
     }
-    CompactHashSet<E> members = lockedExpand(children);
+    CompactHashSet<?> members = lockedExpand(children);
     if (members != null) {
-      return ImmutableList.copyOf(members);
+      if (transformer != null) {
+        return ImmutableList.copyOf(Iterables.transform(members, (Function<Object, E>)transformer));
+      } else {
+        return ImmutableList.copyOf((Iterable<E>) members);
+      }
     }
     ImmutableList.Builder<E> output =
         ImmutableList.builderWithExpectedSize(memoizedFlattenAndGetSize());
-    replay(output, children, memo, 0);
+    replay(output, children, memo, 0, transformer);
     return output.build();
   }
 
@@ -730,12 +757,16 @@ public final class NestedSet<E> {
    * Repeat a previous traversal of {@code children} performed by {@link #walk} and recorded in
    * {@code memo}, appending leaves to {@code output}.
    */
-  private static <E> int replay(
-      ImmutableList.Builder<E> output, Object[] children, byte[] memo, int pos) {
+  private static <T, E> int replay(
+      ImmutableList.Builder<E> output,
+      Object[] children,
+      byte[] memo,
+      int pos,
+      @Nullable Function<T, E> transformer) {
     for (Object child : children) {
       if ((memo[pos >> 3] & (1 << (pos & 7))) != 0) {
         if (child instanceof Object[]) {
-          pos = replay(output, (Object[]) child, memo, pos + 1);
+          pos = replay(output, (Object[]) child, memo, pos + 1, transformer);
         } else {
           output.add((E) child);
           ++pos;
@@ -761,6 +792,11 @@ public final class NestedSet<E> {
     }
     Object[] succs = (Object[]) children;
     int nsuccs = succs.length;
+    if (nsuccs == 2 && succs[0] instanceof Function) {
+      Preconditions.checkState(succs[1] instanceof NestedSet);
+      NestedSet<Object> inner = (NestedSet<Object>) succs[1];
+      return inner.splitIfExceedsMaximumSize(maxDegree).transform((Function<Object, E>) succs[0]);
+    }
     if (nsuccs <= maxDegree) {
       return this;
     }
@@ -786,11 +822,26 @@ public final class NestedSet<E> {
     if (!(children instanceof Object[])) {
       return ImmutableList.of();
     }
-    ImmutableList.Builder<NestedSet<E>> res = ImmutableList.builder();
+    Object[] objects = (Object[]) children;
+    if (objects.length == 2 && objects[0] instanceof Function) {
+      Preconditions.checkState(objects[1] instanceof NestedSet);
+      NestedSet<Object> inner = (NestedSet<Object>) objects[1];
+      return inner.getNonLeaves((Function<Object, E>) objects[0]);
+    }
+    return getNonLeaves(null);
+  }
+
+  private <T> ImmutableList<NestedSet<T>> getNonLeaves(@Nullable Function<E, T> transformer) {
+    ImmutableList.Builder<NestedSet<T>> res = ImmutableList.builder();
     for (Object c : (Object[]) children) {
       if (c instanceof Object[]) {
         int depth = getApproxDepth() - 1; // possible overapproximation
-        res.add(new NestedSet<>(getOrder(), depth, c, null));
+        NestedSet<E> transitiveSet = new NestedSet<>(getOrder(), depth, c, null);
+        if (transformer != null) {
+          res.add(transitiveSet.transform(transformer));
+        } else {
+          res.add((NestedSet<T>) transitiveSet);
+        }
       }
     }
     return res.build();
@@ -806,10 +857,25 @@ public final class NestedSet<E> {
     if (!(children instanceof Object[])) {
       return ImmutableList.of((E) children);
     }
-    ImmutableList.Builder<E> res = ImmutableList.builder();
+    Object[] objects = (Object[]) children;
+    if (objects.length == 2 && objects[0] instanceof Function) {
+      Preconditions.checkState(objects[1] instanceof NestedSet);
+      NestedSet<Object> inner = (NestedSet<Object>) objects[1];
+      return inner.getLeaves((Function<Object, E>) objects[0]);
+    }
+    return getLeaves(null);
+  }
+
+  @SuppressWarnings("unchecked")
+  private <T> ImmutableList<T> getLeaves(@Nullable Function<E, T> transformer) {
+    ImmutableList.Builder<T> res = ImmutableList.builder();
     for (Object c : (Object[]) children) {
       if (!(c instanceof Object[])) {
-        res.add((E) c);
+        if (transformer != null) {
+          res.add(transformer.apply((E) c));
+        } else {
+          res.add((T) c);
+        }
       }
     }
     return res.build();
@@ -854,5 +920,18 @@ public final class NestedSet<E> {
     public String toString() {
       return "NestedSet.Node@" + hashCode(); // intentionally opaque
     }
+  }
+
+  public <T> NestedSet<T> transform(Function<E, T> transformer) {
+    if (isEmpty()) {
+      // Set is empty, nothing to do.
+      return (NestedSet<T>) this;
+    }
+
+    if (isSingleton()) {
+      return NestedSetBuilder.create(getOrder(), transformer.apply((E) children));
+    }
+
+    return new NestedSet<T>(transformer, this);
   }
 }
