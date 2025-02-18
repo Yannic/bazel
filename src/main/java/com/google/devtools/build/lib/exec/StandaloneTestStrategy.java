@@ -84,11 +84,11 @@ public class StandaloneTestStrategy extends TestStrategy {
           .put("RUNFILES_DIR", TestPolicy.RUNFILES_DIR)
           .put("TEST_TMPDIR", TestPolicy.TEST_TMP_DIR)
           .put("RUN_UNDER_RUNFILES", "1")
-          .build();
+          .buildOrThrow();
 
   public static final TestPolicy DEFAULT_LOCAL_POLICY = new TestPolicy(ENV_VARS);
 
-  protected final Path tmpDirRoot;
+  private final Path tmpDirRoot;
 
   public StandaloneTestStrategy(
       ExecutionOptions executionOptions,
@@ -119,7 +119,8 @@ public class StandaloneTestStrategy extends TestStrategy {
       // for this.
       executionInfo.put(ExecutionRequirements.NO_CACHE, "");
     }
-    executionInfo.put(ExecutionRequirements.TIMEOUT, "" + getTimeout(action).toSeconds());
+    executionInfo.put(
+        ExecutionRequirements.TIMEOUT, Long.toString(action.getTimeout().toSeconds()));
 
     SimpleSpawn.LocalResourcesSupplier localResourcesSupplier =
         () ->
@@ -302,7 +303,7 @@ public class StandaloneTestStrategy extends TestStrategy {
       relativeTmpDir = tmpDir.asFragment();
     }
     return DEFAULT_LOCAL_POLICY.computeTestEnvironment(
-        action, clientEnv, getTimeout(action), runfilesDir.relativeTo(execRoot), relativeTmpDir);
+        action, clientEnv, runfilesDir.relativeTo(execRoot), relativeTmpDir);
   }
 
   private TestAttemptResult beginTestAttempt(
@@ -365,6 +366,12 @@ public class StandaloneTestStrategy extends TestStrategy {
       SpawnResult spawnResult, TestResultData.Builder result) {
     BuildEventStreamProtos.TestResult.ExecutionInfo.Builder executionInfo =
         BuildEventStreamProtos.TestResult.ExecutionInfo.newBuilder();
+
+    // The return of `SpawnResult#exitCode()` is noted to only be meaningful if the subprocess
+    // actually executed. In this position, `spawnResult.exitCode()` is always meaningful,
+    // because the code only runs if `spawnResult.setupSuccess()` is previously verified to
+    // be `true`.
+    executionInfo.setExitCode(spawnResult.exitCode());
 
     if (spawnResult.isCacheHit()) {
       result.setRemotelyCached(true);

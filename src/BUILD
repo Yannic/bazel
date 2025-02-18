@@ -108,7 +108,6 @@ JAVA_TOOLS = [
                "//third_party/grpc/bazel:embedded_tools_srcs",
                "//third_party/ijar:embedded_zipper_sources",
                "//third_party/ijar:zipper",
-               "//third_party/java/j2objc:embedded_tools_srcs",
                "//third_party/py/abseil:srcs",
                "//third_party/zlib:embedded_tools",
                "//tools:embedded_tools_srcs",
@@ -172,6 +171,9 @@ filegroup(
         ],
         "//src/conditions:linux_s390x": [
             "@openjdk_linux_s390x_vanilla//file",
+        ],
+        "//src/conditions:linux_riscv64": [
+            "@openjdk_linux_riscv64_vanilla//file",
         ],
         "//conditions:default": [
             "@openjdk_linux_vanilla//file",
@@ -651,6 +653,7 @@ filegroup(
         "@rules_license//:WORKSPACE",
         "@rules_pkg//:WORKSPACE",
         "@rules_python//:WORKSPACE",
+        "@rules_shell//shell:rules_bzl",
         "@rules_testing//:LICENSE",
     ] + select({
         "//src/conditions:linux_x86_64": ["@remotejdk%s_linux//:WORKSPACE" % v for v in JDK_VERSIONS],

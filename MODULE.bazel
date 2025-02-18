@@ -25,7 +25,7 @@ bazel_dep(name = "zstd-jni", version = "1.5.2-3.bcr.1")
 bazel_dep(name = "blake3", version = "1.5.1.bcr.1")
 bazel_dep(name = "zlib", version = "1.3.1.bcr.3")
 bazel_dep(name = "rules_cc", version = "0.0.17")
-bazel_dep(name = "rules_java", version = "8.8.0")
+bazel_dep(name = "rules_java", version = "8.9.0")
 bazel_dep(name = "rules_graalvm", version = "0.11.1")
 bazel_dep(name = "rules_proto", version = "7.0.2")
 bazel_dep(name = "rules_jvm_external", version = "6.5")
@@ -34,7 +34,7 @@ bazel_dep(name = "rules_testing", version = "0.6.0")
 bazel_dep(name = "googletest", version = "1.15.2", repo_name = "com_google_googletest")
 bazel_dep(name = "with_cfg.bzl", version = "0.6.0")
 bazel_dep(name = "abseil-cpp", version = "20240722.0.bcr.2")
-bazel_dep(name = "rules_shell", version = "0.2.0")
+bazel_dep(name = "rules_shell", version = "0.3.0")
 
 # repo_name needs to be used, until WORKSPACE mode is to be supported in bazel_tools
 bazel_dep(name = "protobuf", version = "29.0", repo_name = "com_google_protobuf")
@@ -120,7 +120,6 @@ maven.install(
         "com.google.guava:guava:33.2.1-jre",
         "com.google.http-client:google-http-client:1.42.0",
         "com.google.http-client:google-http-client-gson:1.42.0",
-        "com.google.j2objc:j2objc-annotations:1.3",
         "com.google.turbine:turbine:0.9.0",
         "com.guardsquare:proguard-base:jar:7.5.0",
         "com.ryanharter.auto.value:auto-value-gson-extension:1.3.1",
@@ -296,6 +295,7 @@ use_repo(
     "openjdk_linux_aarch64_vanilla",
     "openjdk_linux_ppc64le_vanilla",
     "openjdk_linux_s390x_vanilla",
+    "openjdk_linux_riscv64_vanilla",
     "openjdk_linux_vanilla",
     "openjdk_macos_aarch64_vanilla",
     "openjdk_macos_x86_64_vanilla",

@@ -32,6 +32,7 @@ import com.google.devtools.build.lib.events.Event;
 import com.google.devtools.build.lib.events.EventHandler;
 import com.google.devtools.build.lib.profiler.AutoProfiler;
 import com.google.devtools.build.lib.profiler.GoogleAutoProfilerUtils;
+import com.google.devtools.build.lib.util.MapCodec;
 import com.google.devtools.build.lib.util.PersistentMap;
 import com.google.devtools.build.lib.util.StringIndexer;
 import com.google.devtools.build.lib.util.VarInt;
@@ -53,7 +54,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Predicate;
 import javax.annotation.Nullable;
@@ -65,10 +65,9 @@ import javax.annotation.Nullable;
 @ConditionallyThreadSafe // condition: each instance must be instantiated with different cache root
 public class CompactPersistentActionCache implements ActionCache {
   private static final GoogleLogger logger = GoogleLogger.forEnclosingClass();
-  private static final int SAVE_INTERVAL_SECONDS = 3;
+  private static final Duration SAVE_INTERVAL = Duration.ofSeconds(3);
   // Log if periodically saving the action cache incurs more than 5% overhead.
-  private static final Duration MIN_TIME_FOR_LOGGING =
-      Duration.ofSeconds(SAVE_INTERVAL_SECONDS).dividedBy(20);
+  private static final Duration MIN_TIME_FOR_LOGGING = SAVE_INTERVAL.dividedBy(20);
 
   // Key of the action cache record that holds information used to verify referential integrity
   // between action cache and string indexer. Must be < 0 to avoid conflict with real action
@@ -79,10 +78,40 @@ public class CompactPersistentActionCache implements ActionCache {
 
   private static final int VERSION = 18;
 
+  private static final MapCodec<Integer, byte[]> CODEC =
+      new MapCodec<Integer, byte[]>() {
+        @Override
+        protected Integer readKey(DataInputStream in) throws IOException {
+          return in.readInt();
+        }
+
+        @Override
+        protected byte[] readValue(DataInputStream in) throws IOException {
+          int size = in.readInt();
+          if (size < 0) {
+            throw new IOException("found negative array size: " + size);
+          }
+          byte[] data = new byte[size];
+          in.readFully(data);
+          return data;
+        }
+
+        @Override
+        protected void writeKey(Integer key, DataOutputStream out) throws IOException {
+          out.writeInt(key);
+        }
+
+        @Override
+        protected void writeValue(byte[] value, DataOutputStream out) throws IOException {
+          out.writeInt(value.length);
+          out.write(value);
+        }
+      };
+
   private static final class ActionMap extends PersistentMap<Integer, byte[]> {
     private final Clock clock;
     private final PersistentStringIndexer indexer;
-    private long nextUpdateSecs;
+    private long nextUpdateNanos;
 
     ActionMap(
         ConcurrentMap<Integer, byte[]> map,
@@ -91,20 +120,20 @@ public class CompactPersistentActionCache implements ActionCache {
         Path mapFile,
         Path journalFile)
         throws IOException {
-      super(VERSION, map, mapFile, journalFile);
+      super(VERSION, CODEC, map, mapFile, journalFile);
       this.indexer = indexer;
       this.clock = clock;
-      // Using nanoTime. currentTimeMillis may not provide enough granularity.
-      nextUpdateSecs = TimeUnit.NANOSECONDS.toSeconds(clock.nanoTime()) + SAVE_INTERVAL_SECONDS;
+      // Use nanoTime() instead of currentTimeMillis() to get monotonic time, not wall time.
+      nextUpdateNanos = clock.nanoTime() + SAVE_INTERVAL.toNanos();
       load();
     }
 
     @Override
     protected boolean updateJournal() {
-      // Using nanoTime. currentTimeMillis may not provide enough granularity.
-      long timeSecs = TimeUnit.NANOSECONDS.toSeconds(clock.nanoTime());
-      if (SAVE_INTERVAL_SECONDS == 0 || timeSecs > nextUpdateSecs) {
-        nextUpdateSecs = timeSecs + SAVE_INTERVAL_SECONDS;
+      // Use nanoTime() instead of currentTimeMillis() to get monotonic time, not wall time.
+      long currentTimeNanos = clock.nanoTime();
+      if (currentTimeNanos > nextUpdateNanos) {
+        nextUpdateNanos = currentTimeNanos + SAVE_INTERVAL.toNanos();
         // Force flushing of the PersistentStringIndexer instance. This is needed to ensure
         // that filename index data on disk is always up-to-date when we save action cache
         // data.
@@ -131,39 +160,6 @@ public class CompactPersistentActionCache implements ActionCache {
       } catch (IOException e) {
         return false;
       }
-    }
-
-    @Override
-    protected Integer readKey(DataInputStream in) throws IOException {
-      return in.readInt();
-    }
-
-    @Override
-    protected byte[] readValue(DataInputStream in) throws IOException {
-      int size = in.readInt();
-      if (size < 0) {
-        throw new IOException("found negative array size: " + size);
-      }
-      byte[] data = new byte[size];
-      in.readFully(data);
-      return data;
-    }
-
-    @Override
-    protected void writeKey(Integer key, DataOutputStream out) throws IOException {
-      out.writeInt(key);
-    }
-
-    @Override
-    // TODO(bazel-team): (2010) This method, writeKey() and related Metadata methods
-    // should really use protocol messages. Doing so would allow easy inspection
-    // of the action cache content and, more importantly, would cut down on the
-    // need to change VERSION to different number every time we touch those
-    // methods. Especially when we'll start to add stuff like statistics for
-    // each action.
-    protected void writeValue(byte[] value, DataOutputStream out) throws IOException {
-      out.writeInt(value.length);
-      out.write(value);
     }
   }
 
@@ -201,6 +197,8 @@ public class CompactPersistentActionCache implements ActionCache {
       EventHandler reporterForInitializationErrors,
       boolean alreadyFoundCorruption)
       throws IOException {
+    cacheRoot.createDirectoryAndParents();
+
     PersistentMap<Integer, byte[]> map;
     Path cacheFile = cacheFile(cacheRoot);
     Path journalFile = journalFile(cacheRoot);
@@ -266,7 +264,7 @@ public class CompactPersistentActionCache implements ActionCache {
       throws IOException {
     renameCorruptedFiles(cacheRoot);
     if (message != null) {
-      e = new IOException(message, e);
+      e = new IOException("%s: %s".formatted(message, e.getMessage()), e);
     }
     logger.atWarning().withCause(e).log(
         "Failed to load action cache, preexisting files kept as %s/*.bad", cacheRoot);
@@ -274,7 +272,7 @@ public class CompactPersistentActionCache implements ActionCache {
         Event.error(
             "Error during action cache initialization: "
                 + e.getMessage()
-                + ". Data will be reset, potentially causing target rebuilds"));
+                + ". Data may be incomplete, potentially causing rebuilds"));
     if (alreadyFoundCorruption) {
       throw e;
     }
@@ -403,7 +401,13 @@ public class CompactPersistentActionCache implements ActionCache {
 
   @Override
   public void removeIf(Predicate<Entry> predicate) {
-    map.entrySet().removeIf(entry -> predicate.test(get(entry.getValue())));
+    for (Map.Entry<Integer, byte[]> entry : map.entrySet()) {
+      if (predicate.test(get(entry.getValue()))) {
+        // Although this is racy (the key might be concurrently set to a different value), we don't
+        // care because it's a very small window and it only impacts performance, not correctness.
+        map.remove(entry.getKey());
+      }
+    }
   }
 
   @ThreadSafety.ThreadHostile
@@ -687,7 +691,11 @@ public class CompactPersistentActionCache implements ActionCache {
     try {
       ByteBuffer source = ByteBuffer.wrap(data);
 
-      byte[] actionKeyBytes = new byte[VarInt.getVarInt(source)];
+      int actionKeySize = VarInt.getVarInt(source);
+      if (actionKeySize < 0) {
+        throw new IOException("Negative action key size: " + actionKeySize);
+      }
+      byte[] actionKeyBytes = new byte[actionKeySize];
       source.get(actionKeyBytes);
       String actionKey = new String(actionKeyBytes, ISO_8859_1);
 

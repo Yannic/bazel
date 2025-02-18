@@ -32,7 +32,6 @@ import com.google.devtools.build.lib.actions.Artifact.SpecialArtifact;
 import com.google.devtools.build.lib.actions.Artifact.TreeFileArtifact;
 import com.google.devtools.build.lib.actions.FileArtifactValue;
 import com.google.devtools.build.lib.actions.FileValue;
-import com.google.devtools.build.lib.actions.FilesetTraversalParams.DirectTraversalRoot;
 import com.google.devtools.build.lib.actions.RunfilesArtifactValue;
 import com.google.devtools.build.lib.actions.RunfilesTreeAction;
 import com.google.devtools.build.lib.bugreport.BugReport;
@@ -44,6 +43,7 @@ import com.google.devtools.build.lib.server.FailureDetails.FailureDetail;
 import com.google.devtools.build.lib.skyframe.ActionTemplateExpansionValue.ActionTemplateExpansionKey;
 import com.google.devtools.build.lib.skyframe.RecursiveFilesystemTraversalFunction.RecursiveFilesystemTraversalException;
 import com.google.devtools.build.lib.skyframe.RecursiveFilesystemTraversalValue.ResolvedFile;
+import com.google.devtools.build.lib.skyframe.TraversalRequest.DirectTraversalRoot;
 import com.google.devtools.build.lib.skyframe.serialization.SkyValueRetriever;
 import com.google.devtools.build.lib.skyframe.serialization.SkyValueRetriever.RetrievalResult;
 import com.google.devtools.build.lib.skyframe.serialization.SkyValueRetriever.SerializableSkyKeyComputeState;
@@ -133,6 +133,12 @@ public final class ArtifactFunction implements SkyFunction {
       throws ArtifactFunctionException, InterruptedException {
     Artifact artifact = (Artifact) skyKey;
 
+    if (!artifact.hasKnownGeneratingAction()) {
+      // If the artifact has no known generating action, it is a source artifact and is never cached
+      // remotely.
+      return createSourceValue(artifact, env);
+    }
+
     if (artifact.getArtifactOwner().getLabel() != null) {
       RetrievalResult retrievalResult =
           maybeFetchSkyValueRemotely(artifact, env, cachingDependenciesSupplier.get(), State::new);
@@ -146,10 +152,6 @@ public final class ArtifactFunction implements SkyFunction {
       }
     }
 
-    if (!artifact.hasKnownGeneratingAction()) {
-      // If the artifact has no known generating action, it is a source artifact.
-      return createSourceValue(artifact, env);
-    }
     Artifact.DerivedArtifact derivedArtifact = (DerivedArtifact) artifact;
 
     ArtifactDependencies artifactDependencies =
