@@ -45,6 +45,7 @@ import com.google.devtools.build.lib.actions.BuildFailedException;
 import com.google.devtools.build.lib.actions.CompletionContext.ArtifactReceiver;
 import com.google.devtools.build.lib.actions.EventReportingArtifacts;
 import com.google.devtools.build.lib.actions.EventReportingArtifacts.ReportedArtifacts;
+import com.google.devtools.build.lib.actions.FileArtifactValue;
 import com.google.devtools.build.lib.actions.LostInputsExecException;
 import com.google.devtools.build.lib.actions.Spawn;
 import com.google.devtools.build.lib.actions.SpawnResult;
@@ -419,7 +420,9 @@ public class RewindingTestsHelper {
     var e = assertThrows(BuildFailedException.class, () -> testCase.buildTarget("//foo:top"));
     assertThat(e.getDetailedExitCode().getFailureDetail().getActionRewinding().getCode())
         .isEqualTo(ActionRewinding.Code.LOST_INPUT_REWINDING_DISABLED);
-    testCase.assertContainsError("Executing genrule //foo:top failed: lost inputs with digests");
+    testCase.assertContainsError(
+        "Executing genrule //foo:top failed: Unexpected lost inputs (pass"
+            + " --rewind_lost_inputs to enable recovery): foo/dep.out");
   }
 
   /**
@@ -3195,7 +3198,10 @@ public class RewindingTestsHelper {
 
             @Override
             public void acceptFilesetMapping(
-                Artifact fileset, PathFragment relName, Path targetFile) {
+                Artifact fileset,
+                PathFragment relName,
+                Path targetFile,
+                FileArtifactValue metadata) {
               execPaths.add(targetFile.asFragment().relativeTo(execRoot));
             }
           });

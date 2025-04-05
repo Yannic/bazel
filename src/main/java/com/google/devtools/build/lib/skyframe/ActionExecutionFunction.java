@@ -16,7 +16,7 @@ package com.google.devtools.build.lib.skyframe;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
-import static com.google.devtools.build.lib.skyframe.SkyValueRetrieverUtils.maybeFetchSkyValueRemotely;
+import static com.google.devtools.build.lib.skyframe.SkyValueRetrieverUtils.fetchRemoteSkyValue;
 import static com.google.devtools.build.lib.skyframe.serialization.SkyValueRetriever.INITIAL_STATE;
 
 import com.google.common.base.Joiner;
@@ -36,7 +36,7 @@ import com.google.common.flogger.GoogleLogger;
 import com.google.devtools.build.lib.actions.Action;
 import com.google.devtools.build.lib.actions.ActionCacheChecker.Token;
 import com.google.devtools.build.lib.actions.ActionCompletionEvent;
-import com.google.devtools.build.lib.actions.ActionExecutedEvent;
+import com.google.devtools.build.lib.actions.ActionExecutedEvent.ErrorTiming;
 import com.google.devtools.build.lib.actions.ActionExecutionException;
 import com.google.devtools.build.lib.actions.ActionInputMap;
 import com.google.devtools.build.lib.actions.ActionLookupData;
@@ -72,8 +72,6 @@ import com.google.devtools.build.lib.packages.semantics.BuildLanguageOptions;
 import com.google.devtools.build.lib.profiler.Profiler;
 import com.google.devtools.build.lib.profiler.ProfilerTask;
 import com.google.devtools.build.lib.profiler.SilentCloseable;
-import com.google.devtools.build.lib.remote.common.LostInputsEvent;
-import com.google.devtools.build.lib.server.FailureDetails;
 import com.google.devtools.build.lib.server.FailureDetails.Execution;
 import com.google.devtools.build.lib.server.FailureDetails.Execution.Code;
 import com.google.devtools.build.lib.server.FailureDetails.FailureDetail;
@@ -177,11 +175,13 @@ public final class ActionExecutionFunction implements SkyFunction {
   public SkyValue compute(SkyKey skyKey, Environment env)
       throws ActionExecutionFunctionException, InterruptedException {
     ActionLookupData actionLookupData = (ActionLookupData) skyKey.argument();
-    if (actionLookupData.getLabel() != null) {
-      switch (maybeFetchSkyValueRemotely(
+    RemoteAnalysisCachingDependenciesProvider remoteCachingDependencies =
+        cachingDependenciesSupplier.get();
+    if (remoteCachingDependencies.isRemoteFetchEnabled()) {
+      switch (fetchRemoteSkyValue(
           actionLookupData,
           env,
-          cachingDependenciesSupplier.get(),
+          remoteCachingDependencies,
           StateWithSerializationStateProvider::new)) {
         case SkyValueRetriever.Restart unused:
           return null;
@@ -191,7 +191,11 @@ public final class ActionExecutionFunction implements SkyFunction {
           break;
       }
     }
-    Action action = ActionUtils.getActionForLookupData(env, actionLookupData);
+    Action action =
+        ActionUtils.getActionForLookupData(
+            env,
+            actionLookupData,
+            /* crashIfActionOwnerMissing= */ !remoteCachingDependencies.isRemoteFetchEnabled());
     if (action == null) {
       return null;
     }
@@ -490,35 +494,19 @@ public final class ActionExecutionFunction implements SkyFunction {
               env,
               actionStartTimeNanos);
     } catch (ActionRewindException rewindingFailedException) {
-      // If rewinding failed, Bazel may still be able to recover by retrying the invocation in
-      // BlazeCommandDispatcher if retries are enabled. This requires setting a special exit code
-      // and emitting an event to inform Bazel's remote module of the lost inputs.
-      DetailedExitCode detailedExitCode =
-          skyframeActionExecutor.invocationRetriesEnabled()
-              ? DetailedExitCode.of(
-                  FailureDetail.newBuilder()
-                      .setMessage("Failed to fetch blobs because they do not exist remotely.")
-                      .setSpawn(
-                          FailureDetails.Spawn.newBuilder()
-                              .setCode(FailureDetails.Spawn.Code.REMOTE_CACHE_EVICTED))
-                      .build())
-              : rewindingFailedException.getDetailedExitCode();
-      ActionExecutionException processedException =
-          skyframeActionExecutor.processAndGetExceptionToThrow(
-              env.getListener(),
-              e.getPrimaryOutputPath(),
-              action,
-              new ActionExecutionException(e, action, /* catastrophe= */ false, detailedExitCode),
-              e.getFileOutErr(),
-              ActionExecutedEvent.ErrorTiming.AFTER_EXECUTION);
-      if (skyframeActionExecutor.invocationRetriesEnabled()) {
-        env.getListener().post(new LostInputsEvent(e.getLostInputs().keySet()));
-        // The message of this exception is different, so do report.
-        throw new ActionExecutionFunctionException(processedException);
-      } else {
-        throw new ActionExecutionFunctionException(
-            new AlreadyReportedActionExecutionException(processedException));
-      }
+      throw new ActionExecutionFunctionException(
+          new AlreadyReportedActionExecutionException(
+              skyframeActionExecutor.processAndGetExceptionToThrow(
+                  env.getListener(),
+                  e.getPrimaryOutputPath(),
+                  action,
+                  new ActionExecutionException(
+                      rewindingFailedException,
+                      action,
+                      /* catastrophe= */ false,
+                      rewindingFailedException.getDetailedExitCode()),
+                  e.getFileOutErr(),
+                  ErrorTiming.AFTER_EXECUTION)));
     } finally {
       if (e.isActionStartedEventAlreadyEmitted() && rewindPlan == null) {
         // Rewinding was unsuccessful. SkyframeActionExecutor's ActionRunner didn't emit an
