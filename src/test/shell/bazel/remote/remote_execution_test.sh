@@ -2640,7 +2640,7 @@ int main(int argc, char** argv) {
 
 EOF
 
-  BAZEL_USE_LLVM_NATIVE_COVERAGE=1 GCOV=llvm-profdata BAZEL_LLVM_COV=llvm-cov CC=clang \
+  BAZEL_USE_LLVM_NATIVE_COVERAGE=1 BAZEL_LLVM_PROFDATA=llvm-profdata BAZEL_LLVM_COV=llvm-cov CC=clang \
     bazel coverage \
       --test_output=all \
       --experimental_fetch_all_coverage_outputs \
@@ -3178,7 +3178,7 @@ function setup_cc_binary_tool_with_dynamic_deps() {
   local repo=$1
 
   cat >> MODULE.bazel <<'EOF'
-bazel_dep(name = "apple_support", version = "1.17.0")
+bazel_dep(name = "apple_support", version = "1.21.0")
 local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "local_repository")
 local_repository(
   name = "other_repo",

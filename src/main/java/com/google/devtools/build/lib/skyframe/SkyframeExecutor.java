@@ -525,9 +525,16 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory {
   /** Non-null only when analysis caching mode is upload/download. */
   @Nullable private ModifiedFileSet diffFromEvaluatingVersion;
 
+  private final AtomicInteger analysisCount = new AtomicInteger();
+
   public void setRemoteAnalysisCachingDependenciesProvider(
       RemoteAnalysisCachingDependenciesProvider remoteAnalysisCachingDependenciesProvider) {
     this.remoteAnalysisCachingDependenciesProvider = remoteAnalysisCachingDependenciesProvider;
+  }
+
+  /** Returns how many times analysis has been run during the life of this bazel server instance. */
+  public int getAndIncrementAnalysisCount() {
+    return analysisCount.getAndIncrement();
   }
 
   /**
@@ -831,8 +838,7 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory {
             skyframeActionExecutor,
             topLevelArtifactsMetric,
             actionRewindStrategy,
-            bugReporter,
-            this::isMergedSkyframeAnalysisExecution));
+            bugReporter));
     map.put(
         SkyFunctions.ASPECT_COMPLETION,
         AspectCompletor.aspectCompletionFunction(
@@ -840,8 +846,7 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory {
             skyframeActionExecutor,
             topLevelArtifactsMetric,
             actionRewindStrategy,
-            bugReporter,
-            this::isMergedSkyframeAnalysisExecution));
+            bugReporter));
     map.put(SkyFunctions.TEST_COMPLETION, new TestCompletionFunction());
     map.put(
         Artifact.ARTIFACT,
@@ -1082,6 +1087,7 @@ public abstract class SkyframeExecutor implements WalkableGraphFactory {
 
   /** Reinitializes the Skyframe evaluator, dropping all previously computed values. */
   public void resetEvaluator() {
+    analysisCount.set(0);
     emittedEventState.clear();
     skyframeBuildView.reset();
     skyfocusState = DISABLED;

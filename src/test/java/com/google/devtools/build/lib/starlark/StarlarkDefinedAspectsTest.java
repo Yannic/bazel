@@ -109,6 +109,55 @@ public class StarlarkDefinedAspectsTest extends AnalysisTestCase {
   }
 
   @Test
+  public void aspectCanBeDefinedUsingFactory() throws Exception {
+    scratch.file(
+        "pkg/foo.bzl",
+        """
+        def _impl(target, ctx):
+            return []
+
+        def aspect_factory():
+            return aspect(implementation=_impl)
+
+        my_aspect = aspect_factory()
+        """);
+    scratch.file(
+        "pkg/BUILD",
+        """
+        cc_library(name = "abc")
+        """);
+
+    AnalysisResult analysisResult = update(ImmutableList.of("pkg/foo.bzl%my_aspect"), "//pkg:abc");
+    assertThat(getLabelsToBuild(analysisResult)).containsExactly("//pkg:abc");
+    assertThat(getAspectDescriptions(analysisResult))
+        .containsExactly("//pkg:foo.bzl%my_aspect(//pkg:abc)");
+  }
+
+  // Regression test for b/409532322
+  @Test
+  public void aspectCannotBeDefinedInBuildFileThread() throws Exception {
+    scratch.file(
+        "pkg/foo.bzl",
+        """
+        def _impl(target, ctx):
+            return []
+
+        def aspect_factory():
+            return aspect(implementation=_impl)
+        """);
+    scratch.file(
+        "pkg/BUILD",
+        """
+        load(":foo.bzl", "aspect_factory")
+        my_aspect = aspect_factory()
+        """);
+
+    reporter.removeHandler(failFastHandler);
+    assertThrows(TargetParsingException.class, () -> update("//pkg:BUILD"));
+    assertContainsEvent("aspect() can only be used during .bzl initialization");
+  }
+
+  @Test
   public void aspectWithSingleDeclaredProvider() throws Exception {
     scratch.file(
         "test/aspect.bzl",
@@ -305,7 +354,7 @@ public class StarlarkDefinedAspectsTest extends AnalysisTestCase {
   public void aspectPropagating() throws Exception {
     scratch.file(
         "test/aspect.bzl",
-        """
+"""
 Info = provider()
 def _impl(target, ctx):
    s = depset([target.label], transitive = [i[Info].target_labels for i in ctx.rule.attr.deps])
@@ -550,7 +599,7 @@ MyAspect = aspect(
   public void aspectsFromStarlarkRules() throws Exception {
     scratch.file(
         "test/aspect.bzl",
-        """
+"""
 AspectInfo = provider()
 def _aspect_impl(target, ctx):
    s = depset([target.label], transitive =
@@ -2397,11 +2446,12 @@ my_rule = rule(
     scratch.file(
         "test/aspect.bzl",
         """
+        MyInfo = provider()
         def _impl(target, ctx):
            s = depset([target.label], transitive =
-             [i.target_labels for i in ctx.rule.attr.runtime_deps]
+             [i[MyInfo].target_labels for i in ctx.rule.attr.runtime_deps]
              if hasattr(ctx.rule.attr, 'runtime_deps') else [])
-           return struct(target_labels = s)
+           return MyInfo(target_labels = s)
 
         MyAspect = aspect(
             implementation=_impl,
@@ -2429,7 +2479,9 @@ my_rule = rule(
         update(ImmutableList.of("test/aspect.bzl%MyAspect"), "//test:foo");
     ConfiguredAspect configuredAspect = analysisResult.getAspectsMap().values().iterator().next();
     assertThat(configuredAspect).isNotNull();
-    Object names = configuredAspect.get("target_labels");
+    Object names =
+        getStarlarkProvider(configuredAspect, "//test:aspect.bzl", "MyInfo")
+            .getValue("target_labels");
     assertThat(names).isInstanceOf(Depset.class);
     assertThat(
             Iterables.transform(
@@ -2670,7 +2722,7 @@ my_rule = rule(
   public void aspectDescriptions() throws Exception {
     scratch.file(
         "test/aspect.bzl",
-        """
+"""
 AspectInfo = provider()
 def _a_impl(target,ctx):
   s = str(target.label) + str(ctx.aspect_ids) + '='
@@ -7188,16 +7240,19 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
         prov_a = provider()
         prov_b = provider()
         prov_b_forwarded = provider()
+        AspectInfo = provider()
 
         def _aspect_b_impl(target, ctx):
           result = 'aspect_b on target {} '.format(target.label)
           if prov_b in target:
             result += 'found prov_b = {}'.format(target[prov_b].val)
-            return struct(aspect_b_result = result,
-                          providers = [prov_b_forwarded(val = target[prov_b].val)])
+            return [
+              AspectInfo(aspect_b_result = result),
+              prov_b_forwarded(val = target[prov_b].val)
+             ]
           else:
             result += 'cannot find prov_b'
-            return struct(aspect_b_result = result)
+            return AspectInfo(aspect_b_result = result)
         aspect_b = aspect(
           implementation = _aspect_b_impl,
           required_aspect_providers = [prov_b]
@@ -7213,7 +7268,7 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
             result += ' and found prov_b = {}'.format(target[prov_b_forwarded].val)
           else:
             result += ' but cannot find prov_b'
-          return struct(aspect_a_result = result)
+          return AspectInfo(aspect_a_result = result)
 
         aspect_a = aspect(
           implementation = _aspect_a_impl,
@@ -7263,14 +7318,18 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
     Map<AspectKey, ConfiguredAspect> configuredAspects = analysisResult.getAspectsMap();
     ConfiguredAspect aspectA = getConfiguredAspect(configuredAspects, "aspect_a");
     assertThat(aspectA).isNotNull();
-    String aspectAResult = (String) aspectA.get("aspect_a_result");
+    String aspectAResult =
+        getStarlarkProvider(aspectA, "//test:defs.bzl", "AspectInfo")
+            .getValue("aspect_a_result", String.class);
     assertThat(aspectAResult)
         .isEqualTo(
             "aspect_a on target @@//test:main_target found prov_a = a1 and found prov_b = b1");
 
     ConfiguredAspect aspectB = getConfiguredAspect(configuredAspects, "aspect_b");
     assertThat(aspectB).isNotNull();
-    String aspectBResult = (String) aspectB.get("aspect_b_result");
+    String aspectBResult =
+        getStarlarkProvider(aspectB, "//test:defs.bzl", "AspectInfo")
+            .getValue("aspect_b_result", String.class);
     assertThat(aspectBResult)
         .isEqualTo("aspect_b on target @@//test:main_target found prov_b = b1");
   }
@@ -7283,6 +7342,7 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
         """
         prov_a = provider()
         prov_b = provider()
+        AspectInfo = provider()
 
         def _aspect_b_impl(target, ctx):
           result = 'aspect_b on target {} '.format(target.label)
@@ -7290,7 +7350,7 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
             result += 'found prov_b = {}'.format(target[prov_b].val)
           else:
             result += 'cannot find prov_b'
-          return struct(aspect_b_result = result)
+          return AspectInfo(aspect_b_result = result)
         aspect_b = aspect(
           implementation = _aspect_b_impl,
           required_aspect_providers = [prov_b]
@@ -7302,7 +7362,7 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
             result += 'found prov_a = {}'.format(target[prov_a].val)
           else:
             result += 'cannot find prov_a'
-          return struct(aspect_a_result = result)
+          return AspectInfo(aspect_a_result = result)
 
         aspect_a = aspect(
           implementation = _aspect_a_impl,
@@ -7342,13 +7402,17 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
     Map<AspectKey, ConfiguredAspect> configuredAspects = analysisResult.getAspectsMap();
     ConfiguredAspect aspectA = getConfiguredAspect(configuredAspects, "aspect_a");
     assertThat(aspectA).isNotNull();
-    String aspectAResult = (String) aspectA.get("aspect_a_result");
+    String aspectAResult =
+        getStarlarkProvider(aspectA, "//test:defs.bzl", "AspectInfo")
+            .getValue("aspect_a_result", String.class);
     assertThat(aspectAResult)
         .isEqualTo("aspect_a on target @@//test:main_target found prov_a = a1");
 
     ConfiguredAspect aspectB = getConfiguredAspect(configuredAspects, "aspect_b");
     assertThat(aspectB).isNotNull();
-    String aspectBResult = (String) aspectB.get("aspect_b_result");
+    String aspectBResult =
+        getStarlarkProvider(aspectB, "//test:defs.bzl", "AspectInfo")
+            .getValue("aspect_b_result", String.class);
     assertThat(aspectBResult)
         .isEqualTo("aspect_b on target @@//test:main_target cannot find prov_b");
   }
@@ -7416,12 +7480,13 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
     scratch.file(
         "test/defs.bzl",
         """
+        AspectInfo = provider()
         def _aspect_a_impl(target, ctx):
           result = ['aspect_a on target {}, p1 = {} and a_p = {}'.
                                             format(target.label, ctx.attr.p1, ctx.attr.a_p)]
           if ctx.rule.attr.dep:
-            result += ctx.rule.attr.dep.aspect_a_result
-          return struct(aspect_a_result = result)
+            result += ctx.rule.attr.dep[AspectInfo].aspect_a_result
+          return AspectInfo(aspect_a_result = result)
 
         aspect_a = aspect(
           implementation = _aspect_a_impl,
@@ -7434,8 +7499,8 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
           result = ['aspect_b on target {}, p1 = {} and b_p = {}'.
                                             format(target.label, ctx.attr.p1, ctx.attr.b_p)]
           if ctx.rule.attr.dep:
-            result += ctx.rule.attr.dep.aspect_b_result
-          return struct(aspect_b_result = result)
+            result += ctx.rule.attr.dep[AspectInfo].aspect_b_result
+          return AspectInfo(aspect_b_result = result)
 
         aspect_b = aspect(
           implementation = _aspect_b_impl,
@@ -7477,7 +7542,9 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
     Map<AspectKey, ConfiguredAspect> configuredAspects = analysisResult.getAspectsMap();
     ConfiguredAspect aspectA = getConfiguredAspect(configuredAspects, "aspect_a");
     assertThat(aspectA).isNotNull();
-    StarlarkList<?> aspectAResult = (StarlarkList) aspectA.get("aspect_a_result");
+    StarlarkList<?> aspectAResult =
+        getStarlarkProvider(aspectA, "//test:defs.bzl", "AspectInfo")
+            .getValue("aspect_a_result", StarlarkList.class);
     assertThat(Starlark.toIterable(aspectAResult))
         .containsExactly(
             "aspect_a on target @@//test:main_target, p1 = p1_v1 and a_p = a_p_v1",
@@ -7486,7 +7553,9 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
 
     ConfiguredAspect aspectB = getConfiguredAspect(configuredAspects, "aspect_b");
     assertThat(aspectB).isNotNull();
-    StarlarkList<?> aspectBResult = (StarlarkList) aspectB.get("aspect_b_result");
+    StarlarkList<?> aspectBResult =
+        getStarlarkProvider(aspectB, "//test:defs.bzl", "AspectInfo")
+            .getValue("aspect_b_result", StarlarkList.class);
     assertThat(Starlark.toIterable(aspectBResult))
         .containsExactly(
             "aspect_b on target @@//test:main_target, p1 = p1_v1 and b_p = b_p_v1",
@@ -7578,12 +7647,13 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
     scratch.file(
         "test/defs.bzl",
         """
+        AspectInfo = provider()
         def _aspect_a_impl(target, ctx):
           result = ['aspect_a on target {}, p1 = {} and p2 = {}'.
                                             format(target.label, ctx.attr.p1, ctx.attr.p2)]
           if ctx.rule.attr.dep:
-            result += ctx.rule.attr.dep.aspect_a_result
-          return struct(aspect_a_result = result)
+            result += ctx.rule.attr.dep[AspectInfo].aspect_a_result
+          return AspectInfo(aspect_a_result = result)
 
         aspect_a = aspect(
           implementation = _aspect_a_impl,
@@ -7625,7 +7695,9 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
     Map<AspectKey, ConfiguredAspect> configuredAspects = analysisResult.getAspectsMap();
     ConfiguredAspect aspectA = getConfiguredAspect(configuredAspects, "aspect_a");
     assertThat(aspectA).isNotNull();
-    StarlarkList<?> aspectAResult = (StarlarkList) aspectA.get("aspect_a_result");
+    StarlarkList<?> aspectAResult =
+        getStarlarkProvider(aspectA, "//test:defs.bzl", "AspectInfo")
+            .getValue("aspect_a_result", StarlarkList.class);
     assertThat(Starlark.toIterable(aspectAResult))
         .containsExactly(
             "aspect_a on target @@//test:main_target, p1 = p1_v2 and p2 = p2_v1",
@@ -7638,12 +7710,14 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
     scratch.file(
         "test/defs.bzl",
         """
+        AspectAInfo = provider()
+        AspectBInfo = provider()
         def _aspect_b_impl(target, ctx):
           result = ['aspect_b on target {}, p1 = {} and p3 = {}'.
                                             format(target.label, ctx.attr.p1, ctx.attr.p3)]
           if ctx.rule.attr.dep:
-            result += ctx.rule.attr.dep.aspect_b_result
-          return struct(aspect_b_result = result)
+            result += ctx.rule.attr.dep[AspectBInfo].aspect_b_result
+          return AspectBInfo(aspect_b_result = result)
 
         aspect_b = aspect(
           implementation = _aspect_b_impl,
@@ -7656,8 +7730,8 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
           result = ['aspect_a on target {}, p1 = {} and p2 = {}'.
                                             format(target.label, ctx.attr.p1, ctx.attr.p2)]
           if ctx.rule.attr.dep:
-            result += ctx.rule.attr.dep.aspect_a_result
-          return struct(aspect_a_result = result)
+            result += ctx.rule.attr.dep[AspectAInfo].aspect_a_result
+          return AspectAInfo(aspect_a_result = result)
 
         aspect_a = aspect(
           implementation = _aspect_a_impl,
@@ -7700,7 +7774,9 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
     ImmutableMap<AspectKey, ConfiguredAspect> configuredAspects = analysisResult.getAspectsMap();
     ConfiguredAspect aspectA = getConfiguredAspect(configuredAspects, "aspect_a");
     assertThat(aspectA).isNotNull();
-    StarlarkList<?> aspectAResult = (StarlarkList) aspectA.get("aspect_a_result");
+    StarlarkList<?> aspectAResult =
+        getStarlarkProvider(aspectA, "//test:defs.bzl", "AspectAInfo")
+            .getValue("aspect_a_result", StarlarkList.class);
     assertThat(Starlark.toIterable(aspectAResult))
         .containsExactly(
             "aspect_a on target @@//test:main_target, p1 = p1_v1 and p2 = p2_v2",
@@ -7709,7 +7785,9 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
 
     ConfiguredAspect aspectB = getConfiguredAspect(configuredAspects, "aspect_b");
     assertThat(aspectB).isNotNull();
-    StarlarkList<?> aspectBResult = (StarlarkList) aspectB.get("aspect_b_result");
+    StarlarkList<?> aspectBResult =
+        getStarlarkProvider(aspectB, "//test:defs.bzl", "AspectBInfo")
+            .getValue("aspect_b_result", StarlarkList.class);
     assertThat(Starlark.toIterable(aspectBResult))
         .containsExactly(
             "aspect_b on target @@//test:main_target, p1 = p1_v1 and p3 = p3_v3",
@@ -7996,12 +8074,13 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
     scratch.file(
         "test/defs.bzl",
         """
+        AspectInfo = provider()
         def _aspect_a_impl(target, ctx):
           result = ['aspect_a on target {}, p = {}'.
                                             format(target.label, ctx.attr.p)]
           if ctx.rule.attr.dep:
-            result += ctx.rule.attr.dep.aspect_a_result
-          return struct(aspect_a_result = result)
+            result += ctx.rule.attr.dep[AspectInfo].aspect_a_result
+          return AspectInfo(aspect_a_result = result)
 
         aspect_a = aspect(
           implementation = _aspect_a_impl,
@@ -8042,7 +8121,9 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
     ImmutableMap<AspectKey, ConfiguredAspect> configuredAspects = analysisResult.getAspectsMap();
     ConfiguredAspect aspectA = getConfiguredAspect(configuredAspects, "aspect_a");
     assertThat(aspectA).isNotNull();
-    StarlarkList<?> aspectAResult = (StarlarkList) aspectA.get("aspect_a_result");
+    StarlarkList<?> aspectAResult =
+        getStarlarkProvider(aspectA, "//test:defs.bzl", "AspectInfo")
+            .getValue("aspect_a_result", StarlarkList.class);
     assertThat(Starlark.toIterable(aspectAResult))
         .containsExactly(
             "aspect_a on target @@//test:main_target, p = p_v",
@@ -8594,12 +8675,13 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
     scratch.file(
         "test/defs.bzl",
         """
+        AspectInfo = provider()
         def _aspect_a_impl(target, ctx):
           result = ['aspect_a on target {}, p = {}'.
                                             format(target.label, ctx.attr.p)]
           if ctx.rule.attr.dep:
-            result += ctx.rule.attr.dep.aspect_a_result
-          return struct(aspect_a_result = result)
+            result += ctx.rule.attr.dep[AspectInfo].aspect_a_result
+          return AspectInfo(aspect_a_result = result)
 
         aspect_a = aspect(
           implementation = _aspect_a_impl,
@@ -8640,7 +8722,9 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
     ImmutableMap<AspectKey, ConfiguredAspect> configuredAspects = analysisResult.getAspectsMap();
     ConfiguredAspect aspectA = getConfiguredAspect(configuredAspects, "aspect_a");
     assertThat(aspectA).isNotNull();
-    StarlarkList<?> aspectAResult = (StarlarkList) aspectA.get("aspect_a_result");
+    StarlarkList<?> aspectAResult =
+        getStarlarkProvider(aspectA, "//test:defs.bzl", "AspectInfo")
+            .getValue("aspect_a_result", StarlarkList.class);
     assertThat(Starlark.toIterable(aspectAResult))
         .containsExactly(
             "aspect_a on target @@//test:main_target, p = 2",
@@ -8653,12 +8737,13 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
     scratch.file(
         "test/defs.bzl",
         """
+        AspectInfo = provider()
         def _aspect_a_impl(target, ctx):
           result = ['aspect_a on target {}, p = {}'.
                                             format(target.label, ctx.attr.p)]
           if ctx.rule.attr.dep:
-            result += ctx.rule.attr.dep.aspect_a_result
-          return struct(aspect_a_result = result)
+            result += ctx.rule.attr.dep[AspectInfo].aspect_a_result
+          return AspectInfo(aspect_a_result = result)
 
         aspect_a = aspect(
           implementation = _aspect_a_impl,
@@ -8696,7 +8781,9 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
     ImmutableMap<AspectKey, ConfiguredAspect> configuredAspects = analysisResult.getAspectsMap();
     ConfiguredAspect aspectA = getConfiguredAspect(configuredAspects, "aspect_a");
     assertThat(aspectA).isNotNull();
-    StarlarkList<?> aspectAResult = (StarlarkList) aspectA.get("aspect_a_result");
+    StarlarkList<?> aspectAResult =
+        getStarlarkProvider(aspectA, "//test:defs.bzl", "AspectInfo")
+            .getValue("aspect_a_result", StarlarkList.class);
     assertThat(Starlark.toIterable(aspectAResult))
         .containsExactly(
             "aspect_a on target @@//test:main_target, p = 1",
@@ -9022,12 +9109,13 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
     scratch.file(
         "test/defs.bzl",
         """
+        AspectInfo = provider()
         def _aspect_a_impl(target, ctx):
           result = ['aspect_a on target {}, p = {}'.
                                             format(target.label, ctx.attr.p)]
           if ctx.rule.attr.dep:
-            result += ctx.rule.attr.dep.aspect_a_result
-          return struct(aspect_a_result = result)
+            result += ctx.rule.attr.dep[AspectInfo].aspect_a_result
+          return AspectInfo(aspect_a_result = result)
 
         aspect_a = aspect(
           implementation = _aspect_a_impl,
@@ -9068,7 +9156,9 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
     ImmutableMap<AspectKey, ConfiguredAspect> configuredAspects = analysisResult.getAspectsMap();
     ConfiguredAspect aspectA = getConfiguredAspect(configuredAspects, "aspect_a");
     assertThat(aspectA).isNotNull();
-    StarlarkList<?> aspectAResult = (StarlarkList) aspectA.get("aspect_a_result");
+    StarlarkList<?> aspectAResult =
+        getStarlarkProvider(aspectA, "//test:defs.bzl", "AspectInfo")
+            .getValue("aspect_a_result", StarlarkList.class);
     assertThat(Starlark.toIterable(aspectAResult))
         .containsExactly(
             "aspect_a on target @@//test:main_target, p = True",
@@ -9081,12 +9171,13 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
     scratch.file(
         "test/defs.bzl",
         """
+        AspectInfo = provider()
         def _aspect_a_impl(target, ctx):
           result = ['aspect_a on target {}, p = {}'.
                                             format(target.label, ctx.attr.p)]
           if ctx.rule.attr.dep:
-            result += ctx.rule.attr.dep.aspect_a_result
-          return struct(aspect_a_result = result)
+            result += ctx.rule.attr.dep[AspectInfo].aspect_a_result
+          return AspectInfo(aspect_a_result = result)
 
         aspect_a = aspect(
           implementation = _aspect_a_impl,
@@ -9124,7 +9215,9 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
     ImmutableMap<AspectKey, ConfiguredAspect> configuredAspects = analysisResult.getAspectsMap();
     ConfiguredAspect aspectA = getConfiguredAspect(configuredAspects, "aspect_a");
     assertThat(aspectA).isNotNull();
-    StarlarkList<?> aspectAResult = (StarlarkList) aspectA.get("aspect_a_result");
+    StarlarkList<?> aspectAResult =
+        getStarlarkProvider(aspectA, "//test:defs.bzl", "AspectInfo")
+            .getValue("aspect_a_result", StarlarkList.class);
     assertThat(Starlark.toIterable(aspectAResult))
         .containsExactly(
             "aspect_a on target @@//test:main_target, p = False",
@@ -9669,9 +9762,10 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
     scratch.file(
         "test/defs.bzl",
         """
+        MyInfo = provider()
         def _a_impl(target, ctx):
           value = 'x from aspect = {}, x from target = {}'.format(ctx.attr.x, ctx.rule.attr.x)
-          return struct(aspect_result = value)
+          return MyInfo(aspect_result = value)
         a = aspect(
           implementation = _a_impl,
           attrs = {
@@ -9700,7 +9794,9 @@ r = rule(_r_impl, attrs = { 'dep' : attr.label(aspects = [a])})
     ImmutableMap<AspectKey, ConfiguredAspect> configuredAspects = analysisResult.getAspectsMap();
     ConfiguredAspect aspectA = getConfiguredAspect(configuredAspects, "a");
     assertThat(aspectA).isNotNull();
-    String aspectAResult = (String) aspectA.get("aspect_result");
+    String aspectAResult =
+        getStarlarkProvider(aspectA, "//test:defs.bzl", "MyInfo")
+            .getValue("aspect_result", String.class);
     assertThat(aspectAResult).isEqualTo("x from aspect = xyz, x from target = 4");
   }
 
