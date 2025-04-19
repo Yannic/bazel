@@ -109,6 +109,7 @@ filegroup(
         "//src/main/java/net/starlark/java/annot/processor:srcs",
         "//src/main/java/net/starlark/java/eval:srcs",
         "//src/main/java/net/starlark/java/syntax:srcs",
+        "//src/main/java/net/starlark/java/types:srcs",
     ],
     visibility = [
         "//src:__pkg__",
@@ -484,6 +485,7 @@ java_library(
         "//src/main/java/com/google/devtools/build/lib/skyframe/serialization/analysis:frontier_serializer",
         "//src/main/java/com/google/devtools/build/lib/skyframe/serialization/analysis:frontier_violation_checker",
         "//src/main/java/com/google/devtools/build/lib/skyframe/serialization/analysis:options",
+        "//src/main/java/com/google/devtools/build/lib/skyframe/serialization/analysis:remote_analysis_caching_services_supplier",
         "//src/main/java/com/google/devtools/build/lib/unsafe:string",
         "//src/main/java/com/google/devtools/build/lib/util",
         "//src/main/java/com/google/devtools/build/lib/util:TestType",

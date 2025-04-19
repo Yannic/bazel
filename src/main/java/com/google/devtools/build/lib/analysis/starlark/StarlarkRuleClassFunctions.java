@@ -24,7 +24,6 @@ import static com.google.devtools.build.lib.analysis.BaseRuleClasses.getTestRunt
 import static com.google.devtools.build.lib.packages.Attribute.attr;
 import static com.google.devtools.build.lib.packages.BuildType.LABEL;
 import static com.google.devtools.build.lib.packages.BuildType.LABEL_LIST;
-import static com.google.devtools.build.lib.packages.BuildType.LICENSE;
 import static com.google.devtools.build.lib.packages.BuiltinRestriction.allowlistEntry;
 import static com.google.devtools.build.lib.packages.RuleClass.DEFAULT_TEST_RUNNER_EXEC_GROUP;
 import static com.google.devtools.build.lib.packages.RuleClass.DEFAULT_TEST_RUNNER_EXEC_GROUP_NAME;
@@ -212,7 +211,7 @@ public class StarlarkRuleClassFunctions implements StarlarkRuleFunctionsApi {
   private static final RuleClass binaryBaseRule =
       new RuleClass.Builder("$binary_base_rule", RuleClassType.ABSTRACT, true, baseRule)
           .add(attr("args", STRING_LIST))
-          .add(attr("output_licenses", LICENSE))
+          .add(attr("output_licenses", STRING_LIST))
           .addAttribute(
               attr(Rule.IS_EXECUTABLE_ATTRIBUTE_NAME, BOOLEAN)
                   .value(true)
@@ -388,6 +387,8 @@ public class StarlarkRuleClassFunctions implements StarlarkRuleFunctionsApi {
         .getBool(BuildLanguageOptions.EXPERIMENTAL_ENABLE_FIRST_CLASS_MACROS)) {
       throw Starlark.errorf("Use of `macro()` requires --experimental_enable_first_class_macros");
     }
+    // Ensure we're initializing a .bzl file.
+    BzlInitThreadContext.fromOrFail(thread, "macro()");
 
     MacroClass.Builder builder = new MacroClass.Builder(implementation);
     for (Map.Entry<?, ?> uncheckedEntry : attrs.entrySet()) {
@@ -1208,6 +1209,8 @@ public class StarlarkRuleClassFunctions implements StarlarkRuleFunctionsApi {
       Sequence<?> subrulesUnchecked,
       StarlarkThread thread)
       throws EvalException {
+    // Ensure we're initializing a .bzl file.
+    BzlInitThreadContext.fromOrFail(thread, "aspect()");
     LabelConverter labelConverter = LabelConverter.forBzlEvaluatingThread(thread);
 
     ImmutableList<Pair<String, StarlarkAttrModule.Descriptor>> descriptors =
@@ -1422,6 +1425,9 @@ public class StarlarkRuleClassFunctions implements StarlarkRuleFunctionsApi {
     // Initially null, then non-null once exported.
     @Nullable private MacroClass macroClass = null;
 
+    // Initially null, then non-null once exported.
+    @Nullable private Location exportedLocation = null;
+
     /** A token used for equality that may be mutated by {@link #export}. */
     private Symbol<BzlLoadValue.Key> identityToken;
 
@@ -1439,6 +1445,11 @@ public class StarlarkRuleClassFunctions implements StarlarkRuleFunctionsApi {
     @Override
     public String getName() {
       return macroClass != null ? macroClass.getName() : "unexported macro";
+    }
+
+    @Override
+    public Location getLocation() {
+      return exportedLocation != null ? exportedLocation : Location.BUILTIN;
     }
 
     /**
@@ -1468,23 +1479,13 @@ public class StarlarkRuleClassFunctions implements StarlarkRuleFunctionsApi {
           TargetDefinitionContext.fromOrFailDisallowWorkspace(
               thread, "a symbolic macro", "instantiated");
 
-      Package.Builder pkgBuilder = Package.Builder.fromOrNull(thread);
-      if (pkgBuilder == null) {
-        throw Starlark.errorf(
-            // TODO: #19922 - Clarify error. Maybe we weren't called during .bzl loading but at some
-            // other bad time. Also, it's ambiguous to the user whether, strictly speaking,
-            // evaluating a symbolic macro happens while evaluating a BUILD file.
-            "Cannot instantiate a macro when loading a .bzl file. "
-                + "Macros may only be instantiated while evaluating a BUILD file.");
-      }
-
       if (macroClass == null) {
         throw Starlark.errorf(
             "Cannot instantiate a macro that has not been exported (assign it to a global variable"
                 + " in the .bzl where it's defined)");
       }
 
-      if (macroClass.isFinalizer() && pkgBuilder.currentlyInNonFinalizerMacro()) {
+      if (macroClass.isFinalizer() && targetDefinitionContext.currentlyInNonFinalizerMacro()) {
         throw Starlark.errorf(
             "Cannot instantiate a rule finalizer within a non-finalizer symbolic macro. Rule"
                 + " finalizers may only be instantiated while evaluating a BUILD file, a legacy"
@@ -1495,7 +1496,8 @@ public class StarlarkRuleClassFunctions implements StarlarkRuleFunctionsApi {
         throw Starlark.errorf("unexpected positional arguments");
       }
 
-      MacroInstance macroInstance = macroClass.instantiateAndAddMacro(pkgBuilder, kwargs);
+      MacroInstance macroInstance =
+          macroClass.instantiateAndAddMacro(targetDefinitionContext, kwargs, thread.getCallStack());
 
       // Evaluate the macro now, if it's not a finalizer. Finalizer evaluation will be deferred to
       // the end of the BUILD file evaluation.
@@ -1514,7 +1516,8 @@ public class StarlarkRuleClassFunctions implements StarlarkRuleFunctionsApi {
         // isn't too big. Maybe this is unnecessary since we don't permit recursion. But in theory,
         // a big stack can crash under eager evaluation (where evaluation is on the Java call stack)
         // but not deferred evaluation, leading to a semantic difference.
-        MacroClass.executeMacroImplementation(macroInstance, pkgBuilder, thread.getSemantics());
+        MacroClass.executeMacroImplementation(
+            macroInstance, targetDefinitionContext, thread.getSemantics());
       }
 
       return Starlark.NONE;
@@ -1522,7 +1525,8 @@ public class StarlarkRuleClassFunctions implements StarlarkRuleFunctionsApi {
 
     /** Export a MacroFunction from a Starlark file with a given name. */
     @Override
-    public void export(EventHandler handler, Label starlarkLabel, String exportedName) {
+    public void export(
+        EventHandler handler, Label starlarkLabel, String exportedName, Location exportedLocation) {
       checkState(builder != null && macroClass == null);
       builder.setName(exportedName);
       builder.setDefiningBzlLabel(starlarkLabel);
@@ -1535,6 +1539,7 @@ public class StarlarkRuleClassFunctions implements StarlarkRuleFunctionsApi {
           starlarkLabel,
           exportedName);
       this.identityToken = identityToken.exportAs(exportedName);
+      this.exportedLocation = exportedLocation;
     }
 
     /**
@@ -1782,8 +1787,13 @@ public class StarlarkRuleClassFunctions implements StarlarkRuleFunctionsApi {
     }
 
     /** Export a RuleFunction from a Starlark file with a given name. */
+    // TODO(bazel-team): use exportedLocation as the callable symbol's location.
     @Override
-    public void export(EventHandler handler, Label starlarkLabel, String ruleClassName) {
+    public void export(
+        EventHandler handler,
+        Label starlarkLabel,
+        String ruleClassName,
+        Location exportedLocation) {
       checkState(ruleClass == null && builder != null);
       var symbolToken = (Symbol<?>) identityToken; // always a Symbol before export
       this.identityToken =

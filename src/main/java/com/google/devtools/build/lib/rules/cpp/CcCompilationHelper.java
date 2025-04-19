@@ -64,6 +64,7 @@ import net.starlark.java.eval.StarlarkFunction;
 import net.starlark.java.eval.StarlarkList;
 import net.starlark.java.eval.Tuple;
 
+// LINT.IfChange()
 /**
  * A class to create C/C++ compile actions in a way that is consistent with cc_library. Rules that
  * generate source files and emulate cc_library on top of that should use this class instead of the
@@ -1805,3 +1806,4 @@ public final class CcCompilationHelper {
     return ImmutableList.of(dAction.getPrimaryOutput(), sdAction.getPrimaryOutput());
   }
 }
+// LINT.ThenChange(//third_party/bazel/src/main/java/com/google/devtools/build/lib/rules/cpp/CcStaticCompilationHelper.java)

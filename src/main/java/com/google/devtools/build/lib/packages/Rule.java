@@ -399,7 +399,8 @@ public class Rule extends RuleOrMacroInstance implements Target {
   }
 
   @Override
-  public boolean isRuleCreatedInLegacyMacro() {
+  public boolean isRuleCreatedInMacro() {
+    // TODO(bazel-team): do we really need the `hasStringAttribute(GENERATOR_NAME)` check?
     return interiorCallStack != null || hasStringAttribute(GENERATOR_NAME);
   }
 
@@ -732,20 +733,6 @@ public class Rule extends RuleOrMacroInstance implements Target {
       return License.NO_LICENSE;
     } else {
       return getPackageDeclarations().getPackageArgs().license();
-    }
-  }
-
-  /**
-   * Returns the license of the output of the binary created by this rule, or null if it is not
-   * specified.
-   */
-  @Nullable
-  public License getToolOutputLicense(AttributeMap attributes) {
-    if (isAttrDefined("output_licenses", BuildType.LICENSE)
-        && attributes.isAttributeValueExplicitlySpecified("output_licenses")) {
-      return attributes.get("output_licenses", BuildType.LICENSE);
-    } else {
-      return null;
     }
   }
 

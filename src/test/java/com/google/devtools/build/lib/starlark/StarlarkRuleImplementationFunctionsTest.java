@@ -1267,7 +1267,7 @@ public final class StarlarkRuleImplementationFunctionsTest extends BuildViewTest
 
     Object provider = myInfo.getValue("provider");
     assertThat(provider).isInstanceOf(DefaultInfo.class);
-    assertThat(((StructImpl) provider).getProvider().getKey())
+    assertThat(((DefaultInfo) provider).getProvider().getKey())
         .isEqualTo(DefaultInfo.PROVIDER.getKey());
 
     assertThat(myInfo.getValue("dir"))
@@ -1351,7 +1351,7 @@ public final class StarlarkRuleImplementationFunctionsTest extends BuildViewTest
 
     Object provider = myInfo.getValue("provider");
     assertThat(provider).isInstanceOf(DefaultInfo.class);
-    assertThat(((StructImpl) provider).getProvider().getKey())
+    assertThat(((DefaultInfo) provider).getProvider().getKey())
         .isEqualTo(DefaultInfo.PROVIDER.getKey());
 
     assertThat(myInfo.getValue("dir"))
@@ -1375,42 +1375,6 @@ public final class StarlarkRuleImplementationFunctionsTest extends BuildViewTest
 
     assertThat(myInfo.getValue("rule_files")).isInstanceOf(Depset.class);
     assertThat(myInfo.getValue("rule_files_to_run")).isInstanceOf(FilesToRunProvider.class);
-  }
-
-  @Test
-  public void testDefaultProviderInvalidConfiguration() throws Exception {
-    setBuildLanguageOptions("--incompatible_disallow_struct_provider_syntax=false");
-    scratch.file(
-        "test/foo.bzl",
-        """
-        foo_provider = provider()
-        def _impl(ctx):
-            default = DefaultInfo(
-                runfiles=ctx.runfiles(ctx.files.runs),
-            )
-            foo = foo_provider()
-            return struct(providers=[foo, default], files=depset([]))
-        foo_rule = rule(
-            implementation = _impl,
-            attrs = {
-               'runs': attr.label_list(allow_files=True),
-            }
-        )
-        """);
-    scratch.file(
-        "test/BUILD",
-        """
-        load(':foo.bzl', 'foo_rule')
-        foo_rule(name = 'my_rule', runs = ['run.file', 'run2.file'])
-        """);
-
-    AssertionError expected =
-        assertThrows(AssertionError.class, () -> getConfiguredTarget("//test:my_rule"));
-    assertThat(expected)
-        .hasMessageThat()
-        .contains(
-            "Provider 'files' should be specified in DefaultInfo "
-                + "if it's provided explicitly.");
   }
 
   @Test
@@ -1450,7 +1414,7 @@ public final class StarlarkRuleImplementationFunctionsTest extends BuildViewTest
 
     Object provider = myInfo.getValue("provider");
     assertThat(provider).isInstanceOf(DefaultInfo.class);
-    assertThat(((StructImpl) provider).getProvider().getKey())
+    assertThat(((DefaultInfo) provider).getProvider().getKey())
         .isEqualTo(DefaultInfo.PROVIDER.getKey());
 
     assertThat(myInfo.getValue("dir"))
@@ -1516,7 +1480,7 @@ public final class StarlarkRuleImplementationFunctionsTest extends BuildViewTest
     ConfiguredTarget configuredTarget = getConfiguredTarget("//test:my_rule");
     Object provider = getMyInfoFromTarget(configuredTarget).getValue("default");
     assertThat(provider).isInstanceOf(DefaultInfo.class);
-    assertThat(((StructImpl) provider).getProvider().getKey())
+    assertThat(((DefaultInfo) provider).getProvider().getKey())
         .isEqualTo(DefaultInfo.PROVIDER.getKey());
   }
 

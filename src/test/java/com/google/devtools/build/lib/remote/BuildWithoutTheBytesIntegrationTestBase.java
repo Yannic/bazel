@@ -17,13 +17,13 @@ import static com.google.common.collect.Iterables.getOnlyElement;
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
 import static com.google.devtools.build.lib.vfs.FileSystemUtils.writeContent;
+import static java.lang.System.lineSeparator;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assume.assumeFalse;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Iterables;
 import com.google.common.eventbus.Subscribe;
 import com.google.devtools.build.lib.actions.ActionExecutedEvent;
 import com.google.devtools.build.lib.actions.Artifact;
@@ -37,6 +37,7 @@ import com.google.devtools.build.lib.skyframe.TreeArtifactValue;
 import com.google.devtools.build.lib.util.CommandBuilder;
 import com.google.devtools.build.lib.util.OS;
 import com.google.devtools.build.lib.util.io.RecordingOutErr;
+import com.google.devtools.build.lib.vfs.FileSystemUtils;
 import com.google.devtools.build.lib.vfs.Path;
 import com.google.devtools.build.lib.vfs.PathFragment;
 import java.io.IOException;
@@ -51,6 +52,8 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
   protected abstract void setDownloadToplevel();
 
   protected abstract void setDownloadAll();
+
+  protected abstract void enableActionRewinding();
 
   protected abstract void assertOutputEquals(Path path, String expectedContent) throws Exception;
 
@@ -1715,16 +1718,9 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
     waitDownloads();
 
     // Assert: target was successfully built
-    assertOutputDoesNotExist("a/foo.out");
-    assertOutputDoesNotExist("a/bar.out");
-    var metadata = Iterables.getOnlyElement(getMetadata("//a:bar").values());
-    assertThat(metadata.isRemote()).isTrue();
-    assertThat(metadata.getDigest())
-        .isEqualTo(
-            getDigestHashFunction()
-                .getHashFunction()
-                .hashString("foo" + lineSeparator() + "updated bar" + lineSeparator(), UTF_8)
-                .asBytes());
+    assertOnlyOutputRemoteContent("//a:foo", "foo.out", "foo" + lineSeparator());
+    assertOnlyOutputRemoteContent(
+        "//a:bar", "bar.out", "foo" + lineSeparator() + "updated bar" + lineSeparator());
   }
 
   @Test
@@ -1835,15 +1831,8 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
 
     // Assert: target was successfully built
     assertOutputDoesNotExist("a/foo.out/file-inside");
-    assertOutputDoesNotExist("a/bar.out");
-    var metadata = Iterables.getOnlyElement(getMetadata("//a:bar").values());
-    assertThat(metadata.isRemote()).isTrue();
-    assertThat(metadata.getDigest())
-        .isEqualTo(
-            getDigestHashFunction()
-                .getHashFunction()
-                .hashString("file-inside\nupdated bar" + lineSeparator(), UTF_8)
-                .asBytes());
+    assertOnlyOutputRemoteContent(
+        "//a:bar", "bar.out", "file-inside\nupdated bar" + lineSeparator());
   }
 
   @Test
@@ -2014,6 +2003,18 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
     assertOutputEquals(output.getPath(), content);
   }
 
+  protected void assertOnlyOutputRemoteContent(String target, String filename, String content)
+      throws Exception {
+    Artifact output = getOnlyElement(getArtifacts(target));
+    assertThat(output.getFilename()).isEqualTo(filename);
+    assertThat(output.getPath().exists()).isFalse();
+    var metadata = getOnlyElement(getMetadata(target).values());
+    assertThat(metadata.isRemote()).isTrue();
+    assertThat(metadata.getSize()).isEqualTo(content.length());
+    assertThat(metadata.getDigest())
+        .isEqualTo(getDigestHashFunction().getHashFunction().hashString(content, UTF_8).asBytes());
+  }
+
   protected void assertValidOutputFile(String binRelativePath, String content) throws Exception {
     Path output = getOutputPath(binRelativePath);
     assertOutputEquals(getOutputPath(binRelativePath), content);
@@ -2033,6 +2034,7 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
   }
 
   protected void writeSymlinkRule() throws IOException {
+    FileSystemUtils.touchFile(getWorkspace().getRelative("BUILD"));
     write(
         "symlink.bzl",
         """
@@ -2161,9 +2163,5 @@ public abstract class BuildWithoutTheBytesIntegrationTestBase extends BuildInteg
   protected void restartServer() throws Exception {
     // Simulates a server restart
     createRuntimeWrapper();
-  }
-
-  protected static String lineSeparator() {
-    return System.getProperty("line.separator");
   }
 }

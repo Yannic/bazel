@@ -4,6 +4,7 @@ load("@bazel_pip_dev_deps//:requirements.bzl", "requirement")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@rules_java//java:java_binary.bzl", "java_binary")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//src:build_defs.bzl", "transition_java_language_8_archive")
 load("//src:release_archive.bzl", "release_archive")
 load(":embedded_tools.bzl", "srcsfile")
@@ -108,7 +109,6 @@ JAVA_TOOLS = [
                "//third_party/ijar:embedded_zipper_sources",
                "//third_party/ijar:zipper",
                "//third_party/py/abseil:srcs",
-               "//third_party/zlib:embedded_tools",
                "//tools:embedded_tools_srcs",
            ] + select({
                "//src/conditions:darwin": [
@@ -143,7 +143,7 @@ rule_size_test(
     # WARNING: Only adjust the number in `expect` if you are intentionally
     # adding or removing embedded tools. Know that the more embedded tools there
     # are in Bazel, the bigger the binary becomes and the slower Bazel starts.
-    expect = 364,
+    expect = 327,
     margin = 5,  # percentage
 )
 
@@ -623,17 +623,6 @@ sh_binary(
     }),
     data = [":java_tools_prebuilt_zip"],
     deps = ["@bazel_tools//tools/bash/runfiles"],
-)
-
-# Part of the Java tools remote archive. Not embedded or used in Bazel.
-release_archive(
-    name = "zlib_zip",
-    srcs = ["//third_party/zlib:embedded_tools"],
-    package_dir = "zlib",
-    visibility = [
-        "//src/tools/singlejar:__pkg__",
-        "//third_party/ijar:__pkg__",
-    ],
 )
 
 JDK_VERSIONS = [

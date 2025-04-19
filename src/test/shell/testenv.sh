@@ -476,6 +476,8 @@ function setup_javatest_support() {
   setup_javatest_common
   grep -q 'name = "junit4"' third_party/BUILD \
     || cat <<EOF >>third_party/BUILD
+load("@rules_java//java:java_import.bzl", "java_import")
+
 java_import(
     name = "junit4",
     jars = [
@@ -579,6 +581,10 @@ function add_rules_cc() {
   add_bazel_dep "rules_cc" "$1"
 }
 
+function add_rules_shell() {
+  add_bazel_dep "rules_shell" "$1"
+}
+
 function add_rules_java() {
   add_bazel_dep "rules_java" "$1"
 }
@@ -589,6 +595,10 @@ function add_rules_python() {
 
 function add_rules_license() {
   add_bazel_dep "rules_license" "$1"
+}
+
+function add_zlib() {
+  add_bazel_dep "zlib" "$1"
 }
 
 function add_protobuf() {
@@ -792,6 +802,7 @@ function use_fake_python_runtimes_for_testsuite() {
   cat > tools/python/BUILD << EOF
 load("@rules_python//python:py_runtime.bzl", "py_runtime")
 load("@rules_python//python:py_runtime_pair.bzl", "py_runtime_pair")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 
 package(default_visibility=["//visibility:public"])
 

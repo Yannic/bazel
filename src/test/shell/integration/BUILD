@@ -1,3 +1,4 @@
+load("@rules_shell//shell:sh_library.bzl", "sh_library")
 load("//:workspace_deps.bzl", "gen_workspace_stanza")
 
 package(default_visibility = ["//visibility:private"])
@@ -8,7 +9,7 @@ filegroup(
     visibility = ["//src/test/shell:__pkg__"],
 )
 
-filegroup(
+sh_library(
     name = "test-deps",
     testonly = 1,
     srcs = [
@@ -16,7 +17,7 @@ filegroup(
     ],
 )
 
-filegroup(
+sh_library(
     name = "test-deps-minimal-bazel",
     testonly = 1,
     srcs = [
@@ -26,7 +27,7 @@ filegroup(
     ],
 )
 
-filegroup(
+sh_library(
     name = "test-deps-nojdk",
     testonly = 1,
     srcs = [
@@ -375,8 +376,8 @@ sh_test(
     data = [
         ":protobuf_stanza.txt",
         ":test-deps",
-        "//third_party/zlib",
         "@bazel_tools//tools/bash/runfiles",
+        "@zlib",
     ],
     tags = ["requires-network"],  # Allow this test to access internet to fetch protobuf dependencies.
 )

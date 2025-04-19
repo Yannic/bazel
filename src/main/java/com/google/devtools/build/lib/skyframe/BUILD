@@ -333,7 +333,6 @@ java_library(
         "//src/main/java/com/google/devtools/build/lib/profiler/memory:current_rule_tracker",
         "//src/main/java/com/google/devtools/build/lib/query2/common:QueryTransitivePackagePreloader",
         "//src/main/java/com/google/devtools/build/lib/query2/common:universe-scope",
-        "//src/main/java/com/google/devtools/build/lib/remote/common:lost_inputs_event",
         "//src/main/java/com/google/devtools/build/lib/remote/options",
         "//src/main/java/com/google/devtools/build/lib/repository:external_package_helper",
         "//src/main/java/com/google/devtools/build/lib/rules:repository/local_repository_rule",
@@ -684,10 +683,12 @@ java_library(
         "//src/main/java/com/google/devtools/build/lib/actions:action_lookup_key",
         "//src/main/java/com/google/devtools/build/lib/actions:artifacts",
         "//src/main/java/com/google/devtools/build/lib/cmdline",
+        "//src/main/java/com/google/devtools/build/lib/concurrent",
         "//src/main/java/com/google/devtools/build/lib/skyframe/serialization",
         "//src/main/java/com/google/devtools/build/lib/skyframe/serialization/analysis:dependencies_provider",
-        "//src/main/java/com/google/devtools/build/lib/skyframe/serialization/analysis:options",
         "//src/main/java/com/google/devtools/build/skyframe:skyframe-objects",
+        "//third_party:jsr305",
+        "@com_google_protobuf//:protobuf_java",
     ],
 )
 

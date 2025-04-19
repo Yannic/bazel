@@ -107,35 +107,35 @@ def fail_impl(name, visibility, **kwargs):
 
     new EqualsTester()
         .addEqualityGroup(
-            new PackagePiece.Identifier(
+            new PackagePieceIdentifier.ForBuildFile(
                 PackageIdentifier.createInMainRepo("test_pkg"),
                 Label.parseCanonical("//test_pkg:BUILD")),
-            new PackagePiece.Identifier(
+            new PackagePieceIdentifier.ForBuildFile(
                 PackageIdentifier.createInMainRepo("test_pkg"),
                 Label.parseCanonical("//test_pkg:BUILD")))
         .addEqualityGroup(
-            new PackagePiece.Identifier(
+            new PackagePieceIdentifier.ForBuildFile(
                 PackageIdentifier.parse("@repo//test_pkg"),
                 Label.parseCanonical("@repo//test_pkg:BUILD")))
         .addEqualityGroup(
-            new PackagePiece.ForMacro.Identifier(
+            new PackagePieceIdentifier.ForMacro(
                 PackageIdentifier.createInMainRepo("test_pkg"),
                 Label.parseCanonical("//test_pkg:my_macro.bzl"),
                 "my_macro",
                 "foo"),
-            new PackagePiece.ForMacro.Identifier(
+            new PackagePieceIdentifier.ForMacro(
                 PackageIdentifier.createInMainRepo("test_pkg"),
                 Label.parseCanonical("//test_pkg:my_macro.bzl"),
                 "my_macro",
                 "foo"))
         .addEqualityGroup(
-            new PackagePiece.ForMacro.Identifier(
+            new PackagePieceIdentifier.ForMacro(
                 PackageIdentifier.createInMainRepo("test_pkg"),
                 Label.parseCanonical("//test_pkg:my_macro.bzl"),
                 "other_macro",
                 "foo"))
         .addEqualityGroup(
-            new PackagePiece.ForMacro.Identifier(
+            new PackagePieceIdentifier.ForMacro(
                 PackageIdentifier.createInMainRepo("test_pkg"),
                 Label.parseCanonical("//test_pkg:my_macro.bzl"),
                 "my_macro",
@@ -243,6 +243,7 @@ def fail_impl(name, visibility, **kwargs):
             /* repositoryMapping= */ RepositoryMapping.ALWAYS_FALLBACK,
             /* mainRepositoryMapping= */ null,
             /* cpuBoundSemaphore= */ null,
+            PackageOverheadEstimator.NOOP_ESTIMATOR,
             /* generatorMap= */ null,
             /* configSettingVisibilityPolicy= */ null,
             /* globber= */ null,
@@ -261,6 +262,7 @@ def fail_impl(name, visibility, **kwargs):
         /* repositoryMapping= */ RepositoryMapping.ALWAYS_FALLBACK,
         /* mainRepositoryMapping= */ null,
         /* cpuBoundSemaphore= */ null,
+        PackageOverheadEstimator.NOOP_ESTIMATOR,
         /* generatorMap= */ null,
         /* enableNameConflictChecking= */ true,
         /* trackFullMacroInformation= */ false);
@@ -271,7 +273,8 @@ def fail_impl(name, visibility, **kwargs):
       TargetDefinitionContext targetDefinitionContext, Label label, RuleClass ruleClass)
       throws Exception {
     Rule rule =
-        targetDefinitionContext.createRule(label, ruleClass, /* callstack= */ ImmutableList.of());
+        targetDefinitionContext.createRule(
+            label, ruleClass, /* threadCallStack= */ ImmutableList.of());
     rule.populateOutputFiles(
         new StoredEventHandler(), targetDefinitionContext.getPackageIdentifier());
     targetDefinitionContext.addRule(rule);
@@ -299,7 +302,8 @@ def fail_impl(name, visibility, **kwargs):
       String macroInstanceName)
       throws Exception {
     MacroInstance macro =
-        targetDefinitionContext.createMacro(macroClass, macroInstanceName, /* sameNameDepth= */ 1);
+        targetDefinitionContext.createMacro(
+            macroClass, macroInstanceName, /* sameNameDepth= */ 1, ImmutableList.of());
     macroClass
         .getAttributeProvider()
         .populateRuleAttributeValues(

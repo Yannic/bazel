@@ -65,7 +65,6 @@ import com.google.devtools.build.lib.bugreport.Crash;
 import com.google.devtools.build.lib.bugreport.CrashContext;
 import com.google.devtools.build.lib.buildtool.BuildRequest;
 import com.google.devtools.build.lib.buildtool.BuildResult;
-import com.google.devtools.build.lib.buildtool.BuildTool;
 import com.google.devtools.build.lib.buildtool.buildevent.BuildStartingEvent;
 import com.google.devtools.build.lib.cmdline.Label;
 import com.google.devtools.build.lib.cmdline.LabelSyntaxException;
@@ -398,6 +397,14 @@ public abstract class BuildIntegrationTestCase {
 
   @After
   public final void cleanUp() throws Exception {
+    try {
+      doCleanup();
+    } finally {
+      getRuntime().getBlazeModules().forEach(BlazeModule::blazeShutdown);
+    }
+  }
+
+  private void doCleanup() throws Exception {
     if (subscriberException.getException() != null) {
       throwIfUnchecked(subscriberException.getException());
       throw new RuntimeException(subscriberException.getException());
@@ -663,8 +670,6 @@ public abstract class BuildIntegrationTestCase {
     runtimeWrapper.addOptions("--experimental_extended_sanity_checks");
     runtimeWrapper.addOptions(TestConstants.PRODUCT_SPECIFIC_FLAGS);
     runtimeWrapper.addOptions(TestConstants.PRODUCT_SPECIFIC_BUILD_LANG_OPTIONS);
-    // TODO(rosica): Remove this once g3 is migrated.
-    runtimeWrapper.addOptions("--noincompatible_use_specific_tool_files");
 
     if (AnalysisMock.get().isThisBazel()) {
       // We have to explicitly override @bazel_tools to the version in the workspace (which is where
@@ -853,14 +858,14 @@ public abstract class BuildIntegrationTestCase {
   protected void info() throws Exception {
     events.setOutErr(outErr);
     runtimeWrapper.newCommand(InfoCommand.class);
-    runtimeWrapper.executeNonBuildCommand();
+    runtimeWrapper.executeCustomCommand();
   }
 
   /** Runs the {@code clean} command. */
   public void clean() throws Exception {
     events.setOutErr(outErr);
     runtimeWrapper.newCommand(CleanCommand.class);
-    runtimeWrapper.executeNonBuildCommand();
+    runtimeWrapper.executeCustomCommand();
   }
 
   /** Utility function: parse a string as a label. */

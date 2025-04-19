@@ -309,6 +309,14 @@ public final class BazelRulesModule extends BlazeModule {
         effectTags = {OptionEffectTag.NO_OP},
         help = "No-op.")
     public String hostCrosstoolTop;
+
+    @Option(
+        name = "experimental_use_semaphore_for_jobs",
+        defaultValue = "true",
+        documentationCategory = OptionDocumentationCategory.UNDOCUMENTED,
+        effectTags = {OptionEffectTag.NO_OP},
+        help = "No-op.")
+    public boolean useSemaphoreForJobs;
   }
 
   /** This is where deprecated Bazel-specific options only used by the build command go to die. */
@@ -456,6 +464,14 @@ public final class BazelRulesModule extends BlazeModule {
    * want to graveyard an all-command option specific to Blaze or Bazel, create a subclass.
    */
   public static final class AllCommandGraveyardOptions extends OptionsBase {
+    @Option(
+        name = "incompatible_disallow_struct_provider_syntax",
+        defaultValue = "true",
+        documentationCategory = OptionDocumentationCategory.STARLARK_SEMANTICS,
+        effectTags = {OptionEffectTag.NO_OP},
+        metadataTags = {OptionMetadataTag.INCOMPATIBLE_CHANGE},
+        help = "No-op")
+    public boolean incompatibleDisallowStructProviderSyntax;
 
     @Option(
         name = "auto_cpu_environment_group",

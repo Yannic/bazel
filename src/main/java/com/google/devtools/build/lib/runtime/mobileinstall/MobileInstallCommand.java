@@ -137,17 +137,16 @@ public class MobileInstallCommand implements BlazeCommand {
     public Mode mode;
 
     @Option(
-      name = "mobile_install_aspect",
-      defaultValue = "@android_test_support//tools/android/mobile_install:mobile-install.bzl",
-      documentationCategory = OptionDocumentationCategory.UNDOCUMENTED,
-      effectTags = {OptionEffectTag.LOADING_AND_ANALYSIS, OptionEffectTag.CHANGES_INPUTS},
-      help = "The aspect to use for mobile-install."
-    )
+        name = "mobile_install_aspect",
+        defaultValue = "@rules_android//mobile_install:mi.bzl",
+        documentationCategory = OptionDocumentationCategory.UNDOCUMENTED,
+        effectTags = {OptionEffectTag.LOADING_AND_ANALYSIS, OptionEffectTag.CHANGES_INPUTS},
+        help = "The aspect to use for mobile-install.")
     public String mobileInstallAspect;
 
     @Option(
         name = "mobile_install_supported_rules",
-        defaultValue = "",
+        defaultValue = "android_binary",
         converter = Converters.CommaSeparatedOptionListConverter.class,
         documentationCategory = OptionDocumentationCategory.UNDOCUMENTED,
         effectTags = {OptionEffectTag.LOADING_AND_ANALYSIS},
@@ -300,7 +299,10 @@ public class MobileInstallCommand implements BlazeCommand {
     }
 
     Path workingDir =
-        env.getDirectories().getOutputPath(env.getWorkspaceName()).getParentDirectory();
+        env.getDirectories()
+            .getOutputPath(env.getWorkspaceName())
+            .getParentDirectory()
+            .devirtualize();
 
     if (mobileInstallOptions.runInClient) {
       deployerRequestRef.set(createExecRequest(env, workingDir, cmdLine.build()));

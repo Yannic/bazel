@@ -30,8 +30,6 @@ import com.google.devtools.build.lib.concurrent.ThreadSafety;
 import com.google.devtools.build.lib.concurrent.ThreadSafety.ConditionallyThreadSafe;
 import com.google.devtools.build.lib.events.Event;
 import com.google.devtools.build.lib.events.EventHandler;
-import com.google.devtools.build.lib.profiler.AutoProfiler;
-import com.google.devtools.build.lib.profiler.GoogleAutoProfilerUtils;
 import com.google.devtools.build.lib.util.MapCodec;
 import com.google.devtools.build.lib.util.MapCodec.IncompatibleFormatException;
 import com.google.devtools.build.lib.util.PersistentMap;
@@ -67,8 +65,6 @@ import javax.annotation.Nullable;
 public class CompactPersistentActionCache implements ActionCache {
   private static final GoogleLogger logger = GoogleLogger.forEnclosingClass();
   private static final Duration SAVE_INTERVAL = Duration.ofSeconds(3);
-  // Log if periodically saving the action cache incurs more than 5% overhead.
-  private static final Duration MIN_TIME_FOR_LOGGING = SAVE_INTERVAL.dividedBy(20);
 
   // Key of the action cache record that holds information used to verify referential integrity
   // between action cache and string indexer. Must be < 0 to avoid conflict with real action
@@ -77,7 +73,7 @@ public class CompactPersistentActionCache implements ActionCache {
 
   private static final int NO_INPUT_DISCOVERY_COUNT = -1;
 
-  private static final int VERSION = 18;
+  private static final int VERSION = 19;
 
   private static final MapCodec<Integer, byte[]> CODEC =
       new MapCodec<Integer, byte[]>() {
@@ -130,7 +126,7 @@ public class CompactPersistentActionCache implements ActionCache {
     }
 
     @Override
-    protected boolean updateJournal() {
+    protected boolean shouldFlushJournal() {
       // Use nanoTime() instead of currentTimeMillis() to get monotonic time, not wall time.
       long currentTimeNanos = clock.nanoTime();
       if (currentTimeNanos > nextUpdateNanos) {
@@ -145,17 +141,9 @@ public class CompactPersistentActionCache implements ActionCache {
     }
 
     @Override
-    protected void markAsDirty() {
-      try (AutoProfiler p =
-          GoogleAutoProfilerUtils.logged("slow write to journal", MIN_TIME_FOR_LOGGING)) {
-        super.markAsDirty();
-      }
-    }
-
-    @Override
-    protected boolean keepJournal() {
+    protected boolean shouldKeepJournal() {
       // We must first flush the journal to get an accurate measure of its size.
-      forceFlush();
+      flushJournal();
       try {
         return journalSize() * 100 < cacheSize();
       } catch (IOException e) {
@@ -602,6 +590,7 @@ public class CompactPersistentActionCache implements ActionCache {
     // + 5 bytes max for the file list length
     // + 5 bytes max for each file id
     // + 32 bytes for the environment digest
+    // + 1 byte for archived tree artifacts flag
     // + max bytes for output files
     // + max bytes for output trees
     int maxSize =
@@ -611,6 +600,7 @@ public class CompactPersistentActionCache implements ActionCache {
             + VarInt.MAX_VARINT_SIZE
             + files.size() * VarInt.MAX_VARINT_SIZE
             + DigestUtils.ESTIMATED_SIZE
+            + 1
             + maxOutputFilesSize
             + maxOutputTreesSize;
     ByteArrayOutputStream sink = new ByteArrayOutputStream(maxSize);
@@ -626,6 +616,8 @@ public class CompactPersistentActionCache implements ActionCache {
     }
 
     MetadataDigestUtils.write(entry.getActionPropertiesDigest(), sink);
+
+    VarInt.putVarInt(entry.useArchivedTreeArtifacts() ? 1 : 0, sink);
 
     VarInt.putVarInt(entry.getOutputFiles().size(), sink);
     for (Map.Entry<String, FileArtifactValue> file : entry.getOutputFiles().entrySet()) {
@@ -712,6 +704,8 @@ public class CompactPersistentActionCache implements ActionCache {
 
       byte[] usedClientEnvDigest = MetadataDigestUtils.read(source);
 
+      boolean useArchivedTreeArtifacts = VarInt.getVarInt(source) != 0;
+
       int numOutputFiles = VarInt.getVarInt(source);
       Map<String, FileArtifactValue> outputFiles = Maps.newHashMapWithExpectedSize(numOutputFiles);
       for (int i = 0; i < numOutputFiles; i++) {
@@ -764,7 +758,13 @@ public class CompactPersistentActionCache implements ActionCache {
         throw new IOException("serialized entry data has not been fully decoded");
       }
       return new ActionCache.Entry(
-          actionKey, usedClientEnvDigest, files, digest, outputFiles, outputTrees);
+          actionKey,
+          usedClientEnvDigest,
+          files,
+          digest,
+          outputFiles,
+          outputTrees,
+          useArchivedTreeArtifacts);
     } catch (BufferUnderflowException e) {
       throw new IOException("encoded entry data is incomplete", e);
     }
