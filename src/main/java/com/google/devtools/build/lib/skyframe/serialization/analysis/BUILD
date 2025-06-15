@@ -17,7 +17,7 @@ java_library(
     deps = [
         ":remote_analysis_cache_client",
         ":remote_analysis_caching_state",
-        "//src/main/java/com/google/devtools/build/lib/concurrent",
+        "//src/main/java/com/google/devtools/build/lib/concurrent:thread_safety",
         "//src/main/java/com/google/devtools/build/lib/skyframe/serialization",
         "//src/main/java/com/google/devtools/build/skyframe:skyframe-objects",
         "//third_party:guava",
@@ -116,13 +116,8 @@ java_library(
         "//third_party:guava",
         "//third_party:jsr305",
         "@com_google_protobuf//:protobuf_java",
+        "@zstd-jni",
     ],
-)
-
-java_library(
-    name = "path_compression",
-    srcs = ["PathCompression.java"],
-    deps = ["@com_google_protobuf//:protobuf_java"],
 )
 
 java_library(
@@ -147,6 +142,7 @@ java_library(
     ],
     deps = [
         ":file_dependency_key_support",
+        ":magic_bytes",
         ":value_or_future_map",
         ":versioned_changes",
         "//src/main/java/com/google/devtools/build/lib/concurrent",
@@ -161,6 +157,7 @@ java_library(
         "//third_party:guava",
         "//third_party:jsr305",
         "@com_google_protobuf//:protobuf_java",
+        "@zstd-jni",
     ],
 )
 
@@ -227,6 +224,12 @@ java_library(
         "//third_party:guava",
         "//third_party:jsr305",
     ],
+)
+
+java_library(
+    name = "magic_bytes",
+    srcs = ["MagicBytes.java"],
+    deps = ["//third_party:guava"],
 )
 
 java_library(
